@@ -1,6 +1,6 @@
 [package]
 name = "elderwise"
-version = "0.2.0"
+version = "0.2.1"
 description = "Elderwise — local-first voice, vitals and eye-movement aging biomarker assessment"
 authors = ["Elderwise contributors"]
 edition = "2021"
