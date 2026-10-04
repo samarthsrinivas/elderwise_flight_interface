@@ -1,4 +1,4 @@
-# ElderWise
+# Elderwise
 
 Local-first desktop app that runs a short, guided check-in for older adults and
 reports aging-related biomarkers from three signals:
