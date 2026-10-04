@@ -101,11 +101,8 @@ describe("EyeStep camera lifecycle", () => {
     return button!;
   }
 
-  // A parallel branch adds a calibration gate before the tasks; skip it when present.
   async function skipCalibration() {
-    const skip = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
-      .find(candidate => candidate.textContent === "Skip calibration");
-    if (!skip) return;
+    const skip = buttonLabelled(text => text === "Skip calibration");
     await act(async () => {
       skip.click();
     });
