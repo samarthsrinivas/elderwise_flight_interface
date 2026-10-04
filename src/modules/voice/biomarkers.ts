@@ -1,6 +1,6 @@
 import type {
-  BandTone, SignalQuality, VoiceAgingMarkers, VoiceCaptureQuality,
-  VoiceResult, VoiceTaskId, VoiceTaskResult,
+  BandTone, SignalQuality, VoiceAgeEstimate, VoiceAgeSummary, VoiceAgingMarkers,
+  VoiceCaptureQuality, VoiceResult, VoiceTaskId, VoiceTaskResult,
 } from "../assessment/types";
 import { pitchMarkers } from "./pitch";
 import { rhythmMarkers } from "./rhythm";
@@ -91,18 +91,37 @@ export function computeVoiceAgingMarkers(samples: Float32Array, sampleRate: numb
   return { ...pitchMarkers(samples, sampleRate), ...rhythmMarkers(samples, sampleRate) };
 }
 
-export function analyzeVoiceTask(task: VoiceTaskId, prompt: string, transcript: string, wav: Uint8Array): VoiceTaskResult {
+export function analyzeVoiceTask(
+  task: VoiceTaskId,
+  prompt: string,
+  transcript: string,
+  wav: Uint8Array,
+  ageEstimate: VoiceAgeEstimate | null = null,
+): VoiceTaskResult {
   const parsed = parseWavPcm16(wav);
   return {
     task, prompt, transcript,
     capture: computeCaptureQuality(parsed?.samples ?? new Float32Array(), parsed?.sampleRate ?? 16000),
     markers: parsed ? computeVoiceAgingMarkers(parsed.samples, parsed.sampleRate) : emptyVoiceMarkers(),
+    ageEstimate,
   };
 }
 
 function meanMarker(tasks: readonly VoiceTaskResult[], key: keyof VoiceAgingMarkers): number | null {
   const values = tasks.map((task) => task.markers[key]).filter((value) => value !== null);
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+export function aggregateVoiceAge(tasks: readonly VoiceTaskResult[]): VoiceAgeSummary | null {
+  const estimated = tasks.flatMap((task) => task.ageEstimate ? [{ task: task.task, estimate: task.ageEstimate }] : []);
+  if (!estimated.length) return null;
+  const ageYears = estimated.reduce((sum, item) => sum + item.estimate.ageYears, 0) / estimated.length;
+  return {
+    ageYears: Math.round(ageYears * 10) / 10,
+    maeYears: Math.max(...estimated.map((item) => item.estimate.maeYears)),
+    model: estimated[0].estimate.model,
+    tasks: estimated.map((item) => ({ task: item.task, ageYears: item.estimate.ageYears })),
+  };
 }
 
 export function aggregateVoiceResult(tasks: readonly VoiceTaskResult[]): VoiceResult {
@@ -124,7 +143,7 @@ export function aggregateVoiceResult(tasks: readonly VoiceTaskResult[]): VoiceRe
   const quality = tasks.reduce<SignalQuality>((worst, task) =>
     QUALITY_RANK[task.capture.quality] > QUALITY_RANK[worst] ? task.capture.quality : worst,
   tasks.length ? "good" : "unavailable");
-  return { tasks: [...tasks], markers, quality, band: voiceBand(markers, quality) };
+  return { tasks: [...tasks], markers, quality, band: voiceBand(markers, quality), age: aggregateVoiceAge(tasks) };
 }
 
 export function voiceBand(markers: VoiceAgingMarkers, quality: SignalQuality): BandTone {

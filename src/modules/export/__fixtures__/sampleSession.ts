@@ -34,6 +34,7 @@ export const sampleSession: AssessmentSession = {
           pauseCount: 0,
           voicedRatio: 0.95,
         },
+        ageEstimate: null,
       },
       {
         task: "reading-passage",
@@ -59,6 +60,7 @@ export const sampleSession: AssessmentSession = {
           pauseCount: 5,
           voicedRatio: 0.68,
         },
+        ageEstimate: { ageYears: 68.3, maeYears: 7.6, model: "wavlm-base-plus+svr-voxceleb" },
       },
     ],
     markers: {
@@ -75,6 +77,12 @@ export const sampleSession: AssessmentSession = {
     },
     quality: "good",
     band: "good",
+    age: {
+      ageYears: 68.3,
+      maeYears: 7.6,
+      model: "wavlm-base-plus+svr-voxceleb",
+      tasks: [{ task: "reading-passage", ageYears: 68.3 }],
+    },
   },
   vitals: {
     heartRateBpm: 66.4,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AgeModelPanel } from "./modules/age/AgeModelPanel";
 import { AiSettingsScreen } from "./modules/ai/AiSettingsScreen";
 import { AssessmentScreen } from "./modules/assessment/AssessmentScreen";
 import { HistoryScreen } from "./modules/history/HistoryScreen";
@@ -59,7 +60,14 @@ export function App() {
       <main className="app-main">
         {activeTab === "assessment" && <AssessmentScreen />}
         {activeTab === "history" && <HistoryScreen />}
-        {activeTab === "settings" && <AiSettingsScreen />}
+        {activeTab === "settings" && (
+          <>
+            <AiSettingsScreen />
+            <section className="screen">
+              <AgeModelPanel />
+            </section>
+          </>
+        )}
       </main>
 
       <footer className="app-footer">

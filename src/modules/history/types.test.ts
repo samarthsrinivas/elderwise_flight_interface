@@ -26,6 +26,7 @@ const mockSession: AssessmentSession = {
     },
     quality: "good",
     band: "good",
+    age: null,
   },
   vitals: {
     heartRateBpm: 68.5,

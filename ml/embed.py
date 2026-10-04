@@ -18,17 +18,17 @@ SR = 16000
 MAX_SEC = 10
 
 
-def decode(src) -> np.ndarray:
-    """Decode any audio (path or bytes) to 16 kHz mono float32, capped at MAX_SEC."""
+def decode(src, max_sec: float = MAX_SEC) -> np.ndarray:
+    """Decode any audio (path or bytes) to 16 kHz mono float32, capped at max_sec."""
     with av.open(io.BytesIO(src) if isinstance(src, bytes) else str(src)) as c:
         rs = av.AudioResampler(format="flt", layout="mono", rate=SR)
         out = []
         for frame in c.decode(audio=0):
             for f in rs.resample(frame):
                 out.append(f.to_ndarray().reshape(-1))
-            if sum(len(x) for x in out) >= SR * MAX_SEC:
+            if sum(len(x) for x in out) >= SR * max_sec:
                 break
-    return np.concatenate(out)[: SR * MAX_SEC]
+    return np.concatenate(out)[: int(SR * max_sec)]
 
 
 def items(name):

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AiUnavailableError, asrConfigured, transcribe } from "../ai/api";
+import { AgeModelUnavailableError, estimateVoiceAge } from "./age";
 import { captureVoiceTask } from "./captureVoiceTask";
 import { encodeWav, recordWavClip } from "./recordWav";
 import { sine, SAMPLE_RATE } from "./syntheticSignals";
@@ -10,17 +11,24 @@ vi.mock("../ai/api", () => ({
   asrConfigured: vi.fn(),
   transcribe: vi.fn(),
 }));
+vi.mock("./age", () => ({
+  AgeModelUnavailableError: class AgeModelUnavailableError extends Error {},
+  estimateVoiceAge: vi.fn(),
+}));
 vi.mock("./speech", () => ({ waitForSpeechIdle: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("./recordWav", async (importOriginal) => ({
   ...await importOriginal<typeof import("./recordWav")>(),
   recordWavClip: vi.fn(),
 }));
 
+const AGE = { ageYears: 63.4, maeYears: 7.6, model: "wavlm-base-plus+svr-voxceleb" };
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(recordWavClip).mockResolvedValue(encodeWav(sine(), SAMPLE_RATE));
   vi.mocked(asrConfigured).mockResolvedValue(true);
   vi.mocked(transcribe).mockResolvedValue("Yesterday I walked to the park.");
+  vi.mocked(estimateVoiceAge).mockResolvedValue(AGE);
 });
 
 describe("voice task capture", () => {
@@ -32,6 +40,23 @@ describe("voice task capture", () => {
     expect(result.task).toBe("free-speech");
     expect(result.transcript).toBe("Yesterday I walked to the park.");
     expect(result.markers.f0MeanHz).toBeCloseTo(150, 0);
+    expect(result.ageEstimate).toEqual(AGE);
+  });
+
+  it("skips the age model for sustained vowels", async () => {
+    const result = await captureVoiceTask(voiceTaskSpec("sustained-vowel"));
+    expect(estimateVoiceAge).not.toHaveBeenCalled();
+    expect(result.ageEstimate).toBeNull();
+  });
+
+  it("keeps transcript and markers when the age model is unavailable", async () => {
+    vi.mocked(estimateVoiceAge).mockRejectedValue(new AgeModelUnavailableError("model_missing"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await captureVoiceTask(voiceTaskSpec("reading-passage"));
+    expect(result.ageEstimate).toBeNull();
+    expect(result.transcript).toBe("Yesterday I walked to the park.");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 
   it("keeps local markers when ASR is disabled", async () => {

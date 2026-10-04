@@ -123,6 +123,31 @@ describe("voice summaries", () => {
     const result = aggregateVoiceResult([]);
     expect(voiceResultSchema.parse(result).quality).toBe("unavailable");
     expect(result.markers).toEqual(emptyVoiceMarkers());
+    expect(result.age).toBeNull();
+  });
+
+  it("averages voice-age estimates across the tasks that produced one", () => {
+    const wav = encodeWav(sine(), SAMPLE_RATE);
+    const model = "wavlm-base-plus+svr-voxceleb";
+    const tasks = [
+      analyzeVoiceTask("sustained-vowel", "ahh", "", wav),
+      analyzeVoiceTask("reading-passage", "read", "", wav, { ageYears: 61.2, maeYears: 7.6, model }),
+      analyzeVoiceTask("free-speech", "cue", "", wav, { ageYears: 66.7, maeYears: 7.6, model }),
+    ];
+    const result = aggregateVoiceResult(tasks);
+    expect(result.age).toEqual({
+      ageYears: 64, maeYears: 7.6, model,
+      tasks: [{ task: "reading-passage", ageYears: 61.2 }, { task: "free-speech", ageYears: 66.7 }],
+    });
+    expect(voiceResultSchema.parse(result)).toEqual(result);
+  });
+
+  it("parses history written before age estimates existed", () => {
+    const legacyTask = analyzeVoiceTask("free-speech", "cue", "", encodeWav(sine(), SAMPLE_RATE));
+    const { ageEstimate: _dropped, ...withoutAge } = legacyTask;
+    expect(voiceTaskResultSchema.parse(withoutAge).ageEstimate).toBeNull();
+    const { age: _droppedAge, ...legacyResult } = aggregateVoiceResult([legacyTask]);
+    expect(voiceResultSchema.parse(legacyResult).age).toBeNull();
   });
 
   it.each([

@@ -1,9 +1,13 @@
 import { AiUnavailableError, asrConfigured, transcribe } from "../ai/api";
-import type { VoiceTaskResult } from "../assessment/types";
+import type { VoiceAgeEstimate, VoiceTaskId, VoiceTaskResult } from "../assessment/types";
+import { estimateVoiceAge } from "./age";
 import { analyzeVoiceTask } from "./biomarkers";
 import { isMicRecordingSupported, recordWavClip } from "./recordWav";
 import { waitForSpeechIdle } from "./speech";
 import type { VoiceTaskSpec } from "./tasks";
+
+// The age model was trained on conversational speech; sustained vowels are out of domain.
+const AGE_ESTIMATE_TASKS: ReadonlySet<VoiceTaskId> = new Set(["reading-passage", "free-speech"]);
 
 export function isVoiceInputSupported(): boolean {
   return isMicRecordingSupported();
@@ -20,6 +24,27 @@ export function isRecoverableTranscriptError(error: unknown): boolean {
   return error instanceof AiUnavailableError || /no speech detected|no-speech|aborted|network|timeout|timed out/i.test(message);
 }
 
+async function transcribeIfConfigured(wav: Uint8Array, signal?: AbortSignal): Promise<string> {
+  try {
+    const configured = await asrConfigured();
+    signal?.throwIfAborted();
+    return configured ? await transcribe(wav) : "";
+  } catch (error) {
+    if (!isRecoverableTranscriptError(error)) throw error;
+    return "";
+  }
+}
+
+async function estimateAgeIfSupported(task: VoiceTaskId, wav: Uint8Array): Promise<VoiceAgeEstimate | null> {
+  if (!AGE_ESTIMATE_TASKS.has(task)) return null;
+  try {
+    return await estimateVoiceAge(wav);
+  } catch (error) {
+    console.warn("voice age estimate skipped:", error);
+    return null;
+  }
+}
+
 export async function captureVoiceTask(
   spec: VoiceTaskSpec,
   opts: { readonly onLevel?: (rms: number) => void; readonly signal?: AbortSignal } = {},
@@ -30,15 +55,10 @@ export async function captureVoiceTask(
   // The recorder owns microphone cleanup and cannot be interrupted; abort at stage boundaries.
   const wav = await recordWavClip(spec.durationS * 1000, opts.onLevel ? { onAudioLevel: opts.onLevel } : {});
   opts.signal?.throwIfAborted();
-  let transcript = "";
-  try {
-    const configured = await asrConfigured();
-    opts.signal?.throwIfAborted();
-    if (configured) transcript = await transcribe(wav);
-  } catch (error) {
-    if (!isRecoverableTranscriptError(error)) throw error;
-    transcript = "";
-  }
+  const [transcript, ageEstimate] = await Promise.all([
+    transcribeIfConfigured(wav, opts.signal),
+    estimateAgeIfSupported(spec.id, wav),
+  ]);
   opts.signal?.throwIfAborted();
-  return analyzeVoiceTask(spec.id, spec.prompt, transcript, wav);
+  return analyzeVoiceTask(spec.id, spec.prompt, transcript, wav, ageEstimate);
 }

@@ -889,3 +889,26 @@ a {
   margin-top: var(--space-3);
   padding: var(--space-2) 0;
 }
+
+/* === Voice age model panel === */
+.age-model__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.age-model__header h2 {
+  margin-bottom: var(--space-1);
+}
+
+.age-model__detail {
+  margin: 0;
+  grid-column: 1 / -1;
+}
+
+.summary-metric-note {
+  margin: calc(-1 * var(--space-1)) 0 0;
+  font-size: var(--text-xs);
+}

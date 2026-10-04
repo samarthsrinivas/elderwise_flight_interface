@@ -31,6 +31,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "../ml/age_service.py",
+      "../ml/embed.py",
+      "../ml/wavlm_mlx.py",
+      "../ml/requirements.txt",
+      "../ml/README.md"
+    ],
     "macOS": {
       "entitlements": "./Entitlements.plist",
       "signingIdentity": "Developer ID Application: AJENTIK AI PTE. LTD. (6SJY3B6C35)",

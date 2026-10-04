@@ -23,6 +23,7 @@ const session1: AssessmentSession = {
     },
     quality: "good",
     band: "good",
+    age: null,
   },
   vitals: {
     heartRateBpm: 72,

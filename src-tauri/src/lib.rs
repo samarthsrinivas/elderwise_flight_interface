@@ -2,6 +2,7 @@
 
 use tauri::Manager;
 
+mod age;
 mod ai;
 mod export;
 mod history;
@@ -33,6 +34,9 @@ pub fn run() {
             ai::transcribe_audio,
             ai::synthesize_speech,
             ai::summarize_assessment,
+            age::age_model_status,
+            age::age_download_weights,
+            age::estimate_voice_age,
             export::export_default_dir,
             export::export_dialog_mode,
             export::export_save_pdf,

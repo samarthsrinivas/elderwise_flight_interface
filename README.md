@@ -5,7 +5,8 @@ older adult and reports aging-related biomarkers from three signals:
 
 - **Voice** — sustained vowel, reading passage and free speech, analysed on
   device (F0 mean/SD, jitter, shimmer, HNR, speech and articulation rate,
-  pause ratio, voiced ratio).
+  pause ratio, voiced ratio), plus an optional on-device **voice-age estimate**
+  (WavLM embeddings on MLX → SVR, ±7.6 years) from the two speech tasks.
 - **Vitals** — webcam remote photoplethysmography (heart rate, HRV RMSSD/SDNN,
   respiratory rate, signal-to-noise), analysed on device.
 - **Eye movement** — fixation, prosaccade and smooth-pursuit tasks tracked with
@@ -28,10 +29,10 @@ Only two kinds of data leave the device, and only when you configure a key:
 | Instruction text | ElevenLabs TTS (default) or macOS system voice (no key needed) | Reading instructions aloud |
 | De-identified results JSON for one session | OpenAI (default `gpt-5.5`) | Plain-English summary paragraph |
 
-Everything else — voice acoustics, rPPG, gaze metrics, banding, history, PDF —
-runs inside the app. With no keys configured the check-in still works:
-transcripts are empty, instructions use the system voice, and the summary is
-generated on device.
+Everything else — voice acoustics, voice-age model, rPPG, gaze metrics,
+banding, history, PDF — runs inside the app. With no keys configured the
+check-in still works: transcripts are empty, instructions use the system voice,
+and the summary is generated on device.
 
 API keys are stored per-user in the macOS keychain (service
 `com.elderwise.app`) via Settings, or read from `OPENAI_API_KEY` /
@@ -62,6 +63,41 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings &
 Grant microphone and camera access when macOS prompts. The usage strings live
 in `src-tauri/Info.plist`.
 
+### Voice age model (optional, MLX)
+
+The voice step can estimate speaker age on device with the WavLM + SVR model
+from [`ml/`](ml/README.md). It runs as a Python/MLX subprocess spawned by the
+Rust backend, so it needs a one-time local setup:
+
+```sh
+uv venv --python 3.12 .venv-ml                       # or: python3.12 -m venv .venv-ml
+uv pip install --python .venv-ml/bin/python -r ml/requirements.txt
+.venv-ml/bin/python ml/age_service.py download       # WavLM weights (~377 MB) into the Hugging Face cache
+cp /path/to/age_model.joblib ml/                     # trained regressor; see ml/README.md to train it
+.venv-ml/bin/python ml/age_service.py status         # should report modelPresent / weightsCached true
+```
+
+Settings → **Voice Age Model** shows the same readiness (Python/MLX, weights,
+regressor) and can download the weights for you. When everything is present,
+the reading-passage and free-speech tasks run the model alongside
+transcription; the sustained vowel is skipped (out of domain). The estimate
+appears on the summary voice card, in the PDF ("Estimated Voice Age", with the
+gap to the stated age when it exceeds the model error), and is passed to the
+LLM summary as a non-diagnostic hint. Missing setup never blocks a check-in:
+the field is simply `null`.
+
+Lookup order (first hit wins):
+
+| What | Order |
+| --- | --- |
+| `ml/` scripts | `ELDERWISE_ML_DIR` → repo `ml/` (debug builds) → bundled resources (`Resources/_up_/ml/`) |
+| Python | `ELDERWISE_AGE_PYTHON` → `<ml dir>/../.venv-ml/bin/python` → `~/Library/Application Support/com.elderwise.app/.venv-ml/bin/python` |
+| Regressor | `ELDERWISE_AGE_MODEL` → `<ml dir>/age_model.joblib` → `~/Library/Application Support/com.elderwise.app/models/age_model.joblib` |
+
+For a packaged `.app`, create the venv and drop `age_model.joblib` under
+`~/Library/Application Support/com.elderwise.app/` as above; the scripts are
+bundled with the app.
+
 ### Local `.app` / DMG build
 
 `tauri.conf.json` pins the release signing identity used by CI
@@ -87,18 +123,24 @@ for Keychain access to saved API keys. For development, exporting
 ```
 src/
   modules/assessment/   shared Zod contract (types.ts) + guided flow setup → voice → vitals → eye → summary
-  modules/voice/        WAV capture, aging biomarkers (pitch.ts, rhythm.ts, biomarkers.ts), task specs, TTS/ASR glue
+  modules/voice/        WAV capture, aging biomarkers (pitch.ts, rhythm.ts, biomarkers.ts), task specs, TTS/ASR glue, voice-age client (age.ts)
   modules/vitals/       rPPG pipeline (POS, bandpass, FFT HR, IBI → HRV, respiratory band), face ROI, capture hook + panel
   modules/eye/          gaze proxy from iris landmarks, I-VT saccades, task schedules, capture hook + canvas
   modules/ai/           settings/key management UI and typed `invoke` wrappers
+  modules/age/          Voice Age Model readiness panel (Settings tab)
   modules/history/      JSONL history client, trends, History screen
   modules/export/       jsPDF report model + document builder, native save dialog
   lib/faceLandmarker.ts shared MediaPipe Face Landmarker loader (singleton, GPU/VIDEO mode)
   ui/                   design tokens, band colours, ScoreHero, BandScale, icons
 src-tauri/src/
   ai/                   OpenAI chat (Responses API, streaming), ElevenLabs TTS + STT, keychain store, settings file
+  age/                  spawns ml/age_service.py (Python/MLX) for status, weight download and age prediction
   history/              append-only JSONL under ~/Library/Application Support/com.elderwise.app/
   export/               PDF write + dialog mode
+ml/
+  wavlm_mlx.py          WavLM-base-plus forward pass in MLX
+  embed.py, train.py    dataset embedding + SVR training (research workflow)
+  age_service.py        JSON CLI used by the app: status | download | predict (WAV on stdin)
 ```
 
 Design rules carried over: Zod validation at every IPC boundary, keys only in
@@ -141,4 +183,7 @@ Apple secrets are present (see `docs/signing-setup.md`), and copies them into
   (~1.5 for ideal pursuit).
 - Face/iris tracking quality depends on lighting and camera; the UI reports
   coverage and quality per module.
+- The voice-age model is a population-level regression trained on VoxCeleb
+  interview speech (MAE 7.6 y, r 0.76). It regresses toward ~40, so speakers
+  60+ are typically underestimated by ~10 years; it is not biological age.
 - One local user; no accounts or sync.

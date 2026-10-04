@@ -69,6 +69,18 @@ export const voiceTaskIdSchema = z.enum([
 ]);
 export type VoiceTaskId = z.infer<typeof voiceTaskIdSchema>;
 
+/**
+ * Speaker-age estimate from the local WavLM-MLX + SVR model (ml/).
+ * A population-level regression, not a biological-age measurement.
+ */
+export const voiceAgeEstimateSchema = z.object({
+  ageYears: z.number(),
+  /** Held-out mean absolute error of the model, in years. */
+  maeYears: z.number(),
+  model: z.string(),
+});
+export type VoiceAgeEstimate = z.infer<typeof voiceAgeEstimateSchema>;
+
 /** One recorded voice task with its transcript and locally computed markers. */
 export const voiceTaskResultSchema = z.object({
   task: voiceTaskIdSchema,
@@ -77,8 +89,16 @@ export const voiceTaskResultSchema = z.object({
   transcript: z.string(),
   capture: voiceCaptureQualitySchema,
   markers: voiceAgingMarkersSchema,
+  /** Null when the age model is unavailable or the task is out of domain (sustained vowel). */
+  ageEstimate: voiceAgeEstimateSchema.nullable().default(null),
 });
 export type VoiceTaskResult = z.infer<typeof voiceTaskResultSchema>;
+
+/** Age estimate aggregated across the speech tasks that produced one. */
+export const voiceAgeSummarySchema = voiceAgeEstimateSchema.extend({
+  tasks: z.array(z.object({ task: voiceTaskIdSchema, ageYears: z.number() })),
+});
+export type VoiceAgeSummary = z.infer<typeof voiceAgeSummarySchema>;
 
 export const voiceResultSchema = z.object({
   tasks: z.array(voiceTaskResultSchema),
@@ -86,6 +106,8 @@ export const voiceResultSchema = z.object({
   markers: voiceAgingMarkersSchema,
   quality: signalQualitySchema,
   band: bandToneSchema,
+  /** Null when no task produced an age estimate. Defaults keep pre-0.2 history parsing. */
+  age: voiceAgeSummarySchema.nullable().default(null),
 });
 export type VoiceResult = z.infer<typeof voiceResultSchema>;
 

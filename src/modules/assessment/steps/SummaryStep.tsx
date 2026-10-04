@@ -5,6 +5,7 @@ import { BandScale } from "../../../ui/BandScale";
 import { ScoreHero } from "../../../ui/ScoreHero";
 import { savePdf } from "../../export/api";
 import { buildAssessmentPdf } from "../../export/assessmentPdf";
+import { formatVoiceAge } from "../../export/reportModel";
 import type { AssessmentSession } from "../types";
 
 export interface SummaryStepProps {
@@ -61,6 +62,7 @@ export function SummaryStep({
 
   const prosaccade = session.eye?.tasks.find((t) => t.task === "prosaccade");
   const fixation = session.eye?.tasks.find((t) => t.task === "fixation");
+  const voiceAge = formatVoiceAge(session.voice?.age ?? null, session.participant.age);
 
   return (
     <div className="summary-step">
@@ -86,6 +88,8 @@ export function SummaryStep({
               <MetricRow label="Pitch (F0)" val={session.voice.markers.f0MeanHz ? `${Math.round(session.voice.markers.f0MeanHz)} Hz` : "--"} />
               <MetricRow label="Jitter" val={session.voice.markers.jitterPct ? `${session.voice.markers.jitterPct.toFixed(2)}%` : "--"} />
               <MetricRow label="Shimmer" val={session.voice.markers.shimmerPct ? `${session.voice.markers.shimmerPct.toFixed(2)}%` : "--"} />
+              <MetricRow label="Voice age" val={voiceAge?.value ?? "--"} />
+              {voiceAge?.note && <p className="hint summary-metric-note">{voiceAge.note}</p>}
               <MetricRow label="Quality" val={session.voice.quality} />
             </div>
           ) : (

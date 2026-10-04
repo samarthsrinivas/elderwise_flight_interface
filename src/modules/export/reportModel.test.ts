@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assessmentSessionSchema } from "../assessment/types";
 import { sampleSession } from "./__fixtures__/sampleSession";
-import { buildReportModel } from "./reportModel";
+import { buildReportModel, formatVoiceAge } from "./reportModel";
 
 describe("reportModel", () => {
   it("validates fixture against assessmentSessionSchema", () => {
@@ -34,6 +34,24 @@ describe("reportModel", () => {
     expect(report.disclaimer).toContain("Elderwise provides wellness estimates only");
   });
 
+  it("reports the voice-age estimate against the stated age", () => {
+    const report = buildReportModel(sampleSession);
+    const row = report.sections[0]!.rows.find((r) => r.label === "Estimated Voice Age");
+    expect(row?.value).toBe("68 years (±7.6)");
+    expect(row?.note).toContain("Within model error of stated age 74.");
+    expect(row?.note).toContain("not biological age");
+  });
+
+  it("marks the voice-age row unavailable when no estimate exists", () => {
+    const report = buildReportModel({
+      ...sampleSession,
+      voice: { ...sampleSession.voice!, age: null },
+    });
+    const row = report.sections[0]!.rows.find((r) => r.label === "Estimated Voice Age");
+    expect(row?.value).toBe("Not available");
+    expect(row?.note).toBeUndefined();
+  });
+
   it("handles null sections gracefully", () => {
     const nullSession = {
       ...sampleSession,
@@ -47,5 +65,22 @@ describe("reportModel", () => {
     expect(report.sections[1]?.rows[0]?.value).toBe("Not available");
     expect(report.sections[2]?.rows[0]?.value).toBe("Not available");
     expect(report.summaryText).toBeNull();
+  });
+});
+
+describe("formatVoiceAge", () => {
+  const age = { ageYears: 68.3, maeYears: 7.6, model: "m", tasks: [] };
+
+  it("returns null without an estimate", () => {
+    expect(formatVoiceAge(null, 74)).toBeNull();
+  });
+
+  it("omits the comparison note when stated age is unknown", () => {
+    expect(formatVoiceAge(age, null)).toEqual({ value: "68 years (±7.6)", note: null });
+  });
+
+  it("describes gaps larger than the model error", () => {
+    expect(formatVoiceAge(age, 55)?.note).toBe("About 13 years above stated age 55.");
+    expect(formatVoiceAge(age, 80)?.note).toBe("About 12 years below stated age 80.");
   });
 });

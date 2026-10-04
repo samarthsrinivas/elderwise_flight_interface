@@ -1,4 +1,4 @@
-import type { AssessmentSession, BandTone } from "../assessment/types";
+import type { AssessmentSession, BandTone, VoiceAgeSummary } from "../assessment/types";
 import { bandMeta } from "../../ui/bandColor";
 import { PRE_SCREENING_DISCLAIMER } from "../../ui/disclaimer";
 
@@ -33,6 +33,31 @@ function formatNumber(val: number | null, unit: string, decimals = 1): string {
 function formatPercent(val: number | null): string {
   if (val === null || !Number.isFinite(val)) return "Not available";
   return `${val.toFixed(1)}%`;
+}
+
+export interface VoiceAgeDisplay {
+  readonly value: string;
+  readonly note: string | null;
+}
+
+/** Gap vs stated age is derived at report time; it is never stored in the session. */
+export function formatVoiceAge(
+  age: VoiceAgeSummary | null,
+  participantAge: number | null,
+): VoiceAgeDisplay | null {
+  if (!age || !Number.isFinite(age.ageYears)) return null;
+  const years = Math.round(age.ageYears);
+  const value = `${years} years (±${age.maeYears.toFixed(1)})`;
+  if (participantAge === null) return { value, note: null };
+  const gap = years - participantAge;
+  if (Math.abs(gap) <= age.maeYears) {
+    return { value, note: `Within model error of stated age ${participantAge}.` };
+  }
+  const direction = gap > 0 ? "above" : "below";
+  return {
+    value,
+    note: `About ${Math.abs(gap)} years ${direction} stated age ${participantAge}.`,
+  };
 }
 
 function formatDate(iso: string): string {
@@ -77,6 +102,16 @@ export function buildReportModel(session: AssessmentSession): ReportModel {
     voiceRows.push({
       label: "Local Shimmer",
       value: formatPercent(markers.shimmerPct),
+    });
+    const voiceAge = formatVoiceAge(session.voice.age, p.age);
+    voiceRows.push({
+      label: "Estimated Voice Age",
+      value: voiceAge?.value ?? "Not available",
+      note: voiceAge
+        ? [voiceAge.note, "Population-level estimate from speech; not biological age."]
+            .filter((part): part is string => part !== null)
+            .join(" ")
+        : undefined,
     });
   } else {
     voiceRows.push({ label: "Voice Biomarkers", value: "Not available" });
