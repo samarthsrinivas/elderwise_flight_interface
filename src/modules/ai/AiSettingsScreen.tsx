@@ -7,6 +7,7 @@ import {
   testProvider,
 } from "./api";
 import { ProviderKeyField } from "./ProviderKeyField";
+import { JevKeyField } from "./JevKeyField";
 import { summarizeAiStatus, type AiCapabilitySummary } from "./statusSummary";
 import {
   defaultAiSettings,
@@ -236,6 +237,8 @@ export function AiSettingsScreen() {
             />
           </>
         )}
+        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "var(--space-4) 0" }} />
+        <JevKeyField />
       </div>
 
       <div className="panel">
