@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toMessage } from "../../../lib/errors";
+import { VoiceLiveVisualizer } from "../../voice/VoiceLiveVisualizer";
 import {
   captureVoiceTask,
   isPermissionTranscriptError,
@@ -34,6 +35,7 @@ export function VoiceStep({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const timerRef = useRef<number | null>(null);
+  const latestWaveform = useRef<Float32Array | null>(null);
 
   const spec: VoiceTaskSpec = VOICE_TASKS[taskIndex] ?? VOICE_TASKS[0]!;
   const currentResult = voiceTasks.find((task) => task.task === spec.id);
@@ -100,6 +102,14 @@ export function VoiceStep({
     try {
       const result = await captureVoiceTask(spec, {
         onLevel: (lvl) => setAudioLevel(lvl),
+        onWaveform: (samples) => {
+          latestWaveform.current = samples;
+        },
+        onRecorded: () => {
+          clearTimer();
+          setSecondsRemaining(0);
+          setPhase("analyzing");
+        },
         signal: controller.signal,
       });
       clearTimer();
@@ -121,6 +131,7 @@ export function VoiceStep({
       setPhase("error");
     } finally {
       abortControllerRef.current = null;
+      latestWaveform.current = null;
       setAudioLevel(0);
     }
   };
@@ -130,6 +141,7 @@ export function VoiceStep({
     clearTimer();
     setPhase("idle");
     setAudioLevel(0);
+    latestWaveform.current = null;
   };
 
   const handleNextTask = () => {
@@ -148,6 +160,7 @@ export function VoiceStep({
   };
 
   const isLastTask = taskIndex === VOICE_TASKS.length - 1;
+  const isBusy = phase === "recording" || phase === "analyzing";
 
   return (
     <div className="voice-step">
@@ -166,21 +179,15 @@ export function VoiceStep({
           <p className="voice-prompt-text">{spec.prompt}</p>
         </div>
 
-        {phase === "recording" && (
-          <div className="voice-live-meter-card">
-            <div className="timer" aria-live="polite">
-              00:{String(secondsRemaining).padStart(2, "0")}
-            </div>
-            <div className="voice-level-meter" role="progressbar" aria-valuenow={Math.round(audioLevel * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Microphone volume">
-              <div
-                className="voice-level-meter__fill"
-                style={{ width: `${Math.min(100, Math.round(audioLevel * 100 * 3))}%` }}
-              />
-            </div>
-            <p className="hint" style={{ textAlign: "center", margin: 0 }}>
-              Listening... Speak toward your microphone.
-            </p>
-          </div>
+        {(phase === "recording" || phase === "analyzing") && (
+          <VoiceLiveVisualizer
+            phase={phase}
+            waveformRef={latestWaveform}
+            level={audioLevel}
+            secondsRemaining={secondsRemaining}
+            durationS={spec.durationS}
+            estimatesAge={spec.id !== "sustained-vowel"}
+          />
         )}
 
         {phase === "error" && errorMessage && (
@@ -207,6 +214,11 @@ export function VoiceStep({
                   Pitch (F0): {Math.round(currentResult.markers.f0MeanHz)} Hz
                 </span>
               )}
+              {currentResult.ageEstimate && (
+                <span className="badge neutral">
+                  Voice age: ~{Math.round(currentResult.ageEstimate.ageYears)} yrs
+                </span>
+              )}
             </div>
             {currentResult.transcript && (
               <p className="hint voice-transcript-preview">
@@ -217,9 +229,9 @@ export function VoiceStep({
         )}
 
         <div className="answer-row" style={{ marginTop: "var(--space-5)" }}>
-          {phase === "recording" ? (
+          {isBusy ? (
             <button type="button" className="secondary" onClick={handleCancelRecording}>
-              Cancel recording
+              {phase === "recording" ? "Cancel recording" : "Cancel"}
             </button>
           ) : phase === "done" ? (
             <>
@@ -253,7 +265,7 @@ export function VoiceStep({
             type="button"
             className="secondary"
             onClick={onSkip}
-            disabled={phase === "recording"}
+            disabled={isBusy}
             style={{ marginLeft: "auto" }}
           >
             Skip voice
@@ -262,7 +274,7 @@ export function VoiceStep({
       </div>
 
       <div className="answer-row" style={{ marginTop: "var(--space-3)" }}>
-        <button type="button" className="secondary" onClick={onBack} disabled={phase === "recording"}>
+        <button type="button" className="secondary" onClick={onBack} disabled={isBusy}>
           Back
         </button>
       </div>

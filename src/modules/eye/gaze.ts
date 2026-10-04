@@ -1,9 +1,12 @@
+import type { HeadPose } from "../../lib/headPose";
+
 export interface GazeSample {
   readonly t: number;
   readonly x: number;
   readonly y: number;
   readonly blink: boolean;
   readonly valid: boolean;
+  readonly head?: HeadPose | null;
 }
 
 export interface GazePoint {

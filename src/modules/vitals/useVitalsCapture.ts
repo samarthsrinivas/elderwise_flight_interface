@@ -14,6 +14,9 @@ export interface VitalsCaptureState {
   readonly progress: number;
   readonly elapsedS: number;
   readonly liveBpm: number | null;
+  readonly liveSnr: number | null;
+  /** Normalized (-1..1) bandpassed pulse waveform over the trailing few seconds; empty until a face has been tracked long enough. */
+  readonly pulseTrace: readonly number[];
   readonly faceDetected: boolean;
   readonly result: VitalsResult | null;
   readonly error: string | null;
@@ -25,9 +28,31 @@ export interface VitalsCaptureController extends VitalsCaptureState {
 }
 
 const initialState: VitalsCaptureState = {
-  phase: "idle", progress: 0, elapsedS: 0, liveBpm: null,
+  phase: "idle", progress: 0, elapsedS: 0, liveBpm: null, liveSnr: null, pulseTrace: [],
   faceDetected: false, result: null, error: null,
 };
+
+const TRACE_WINDOW_MS = 8000;
+const TRACE_MIN_SPAN_S = 2.5;
+const TRACE_MIN_SAMPLES = 30;
+const TRACE_REFRESH_S = 0.15;
+
+function pulseTraceFrom(recent: readonly RgbSample[]): number[] {
+  if (recent.length < TRACE_MIN_SAMPLES) return [];
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  if (!first || !last) return [];
+  const spanS = (last.t - first.t) / 1000;
+  if (spanS < TRACE_MIN_SPAN_S) return [];
+  const fs = Math.min(30, (recent.length - 1) / spanS);
+  if (fs <= 6) return [];
+  const uniform = resampleUniform(recent, fs);
+  const filtered = bandpass(detrend(posSignal(uniform, fs), Math.round(fs * 1.5)), fs, 0.7, 3);
+  let peak = 0;
+  for (const value of filtered) peak = Math.max(peak, Math.abs(value));
+  if (peak === 0) return Array.from(filtered, () => 0);
+  return Array.from(filtered, value => value / peak);
+}
 
 export function useVitalsCapture(opts?: { readonly durationS?: number }): VitalsCaptureController {
   const requestedDuration = opts?.durationS ?? 30;
@@ -105,6 +130,7 @@ export function useVitalsCapture(opts?: { readonly durationS?: number }): Vitals
       let faceFrames = 0;
       let previousFrame = -1;
       let lastLive = 6;
+      let lastTrace = 0;
       setState(previous => ({ ...previous, phase: "capturing" }));
       const tick = (timestamp: number) => {
         if (session.signal.aborted) return;
@@ -117,7 +143,7 @@ export function useVitalsCapture(opts?: { readonly durationS?: number }): Vitals
               if (session.signal.aborted) return;
               const result = analyzeRppg(samples, { durationS: elapsedS, faceCoverage: totalFrames > 0 ? faceFrames / totalFrames : 0 });
               stop();
-              setState(previous => ({ ...previous, phase: "done", liveBpm: null, result }));
+              setState(previous => ({ ...previous, phase: "done", liveBpm: null, liveSnr: null, pulseTrace: [], result }));
             });
             return;
           }
@@ -142,20 +168,27 @@ export function useVitalsCapture(opts?: { readonly durationS?: number }): Vitals
             }
             setState(previous => ({ ...previous, faceDetected: face !== null, elapsedS, progress: elapsedS / durationS, liveBpm: face ? previous.liveBpm : null }));
           }
+          if (elapsedS - lastTrace >= TRACE_REFRESH_S) {
+            lastTrace = elapsedS;
+            const pulseTrace = pulseTraceFrom(samples.filter(sample => sample.t >= timestamp - TRACE_WINDOW_MS));
+            setState(previous => ({ ...previous, pulseTrace }));
+          }
           if (elapsedS >= 8 && elapsedS - lastLive >= 2) {
             lastLive = elapsedS;
             const recent = samples.filter(sample => sample.t >= timestamp - 12000);
             let liveBpm: number | null = null;
+            let liveSnr: number | null = null;
             if (recent.length >= 60 && recent[recent.length - 1].t > timestamp - 500) {
               const spanS = (recent[recent.length - 1].t - recent[0].t) / 1000;
               const fs = Math.min(30, (recent.length - 1) / spanS);
               if (spanS >= 7.5 && fs > 6) {
                 const uniform = resampleUniform(recent, fs);
                 const estimate = estimateHeartRate(bandpass(detrend(posSignal(uniform, fs), Math.round(fs * 1.5)), fs, 0.7, 3), fs);
+                liveSnr = estimate.snr;
                 if (estimate.snr !== null && estimate.snr >= 0) liveBpm = estimate.bpm;
               }
             }
-            setState(previous => ({ ...previous, liveBpm }));
+            setState(previous => ({ ...previous, liveBpm, liveSnr }));
           }
           frameRef.current = requestAnimationFrame(tick);
         } catch (error: unknown) { fail(error); }

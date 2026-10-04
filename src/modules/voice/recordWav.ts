@@ -12,8 +12,17 @@ export function isMicRecordingSupported(): boolean {
 }
 
 export interface RecordWavClipOptions {
+  /** Smoothed RMS level in 0..1, once per animation frame while recording. */
   onAudioLevel?: (level: number) => void;
+  /**
+   * Latest time-domain window (centered, -1..1) once per animation frame.
+   * The same buffer is reused between calls; copy it if you keep history.
+   */
+  onWaveform?: (samples: Float32Array) => void;
 }
+
+/** Analyser window: ~43 ms at 48 kHz, enough to show a few pitch periods. */
+const WAVEFORM_FFT_SIZE = 2048;
 
 /** Encode mono float samples as a 16-bit PCM WAV byte array. */
 export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array {
@@ -85,7 +94,7 @@ export async function recordWavClip(
   let levelContext: AudioContext | undefined;
   let levelFrame = 0;
   try {
-    if (options.onAudioLevel) {
+    if (options.onAudioLevel || options.onWaveform) {
       levelContext = new (audioContextCtor())();
       // On iOS a freshly constructed AudioContext starts SUSPENDED and never
       // renders until resumed, where the macOS webview this was built against
@@ -98,18 +107,21 @@ export async function recordWavClip(
       void levelContext.resume().catch(() => undefined);
       const source = levelContext.createMediaStreamSource(stream);
       const analyser = levelContext.createAnalyser();
-      analyser.fftSize = 512;
+      analyser.fftSize = options.onWaveform ? WAVEFORM_FFT_SIZE : 512;
       source.connect(analyser);
       const samples = new Uint8Array(analyser.fftSize);
+      const waveform = new Float32Array(analyser.fftSize);
       const updateLevel = () => {
         analyser.getByteTimeDomainData(samples);
         let sum = 0;
-        for (const sample of samples) {
-          const centered = (sample - 128) / 128;
+        for (let i = 0; i < samples.length; i++) {
+          const centered = ((samples[i] ?? 128) - 128) / 128;
+          waveform[i] = centered;
           sum += centered * centered;
         }
         const rms = Math.sqrt(sum / samples.length);
         options.onAudioLevel?.(Math.min(1, rms * 8));
+        options.onWaveform?.(waveform);
         levelFrame = window.requestAnimationFrame(updateLevel);
       };
       updateLevel();

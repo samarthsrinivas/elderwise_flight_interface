@@ -13,6 +13,8 @@
  * - 10 forehead top, 151 forehead centre, 1 nose tip, 152 chin
  */
 import type { FaceLandmarker, NormalizedLandmark } from "@mediapipe/tasks-vision";
+import { headPoseFromMatrix } from "./headPose";
+import type { HeadPose } from "./headPose";
 
 export const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
 export const FACE_LANDMARKER_MODEL_PATH = "/models/face_landmarker.task";
@@ -24,6 +26,8 @@ export interface FaceLandmarkFrame {
   readonly landmarks: readonly NormalizedLandmark[];
   /** Blendshape scores keyed by category name, e.g. `eyeBlinkLeft`. */
   readonly blendshapes: ReadonlyMap<string, number>;
+  /** Head rotation from the facial transformation matrix; null when unavailable. */
+  readonly headPose: HeadPose | null;
   readonly timestampMs: number;
 }
 
@@ -50,7 +54,7 @@ async function createLandmarker(): Promise<FaceLandmarker> {
     runningMode: "VIDEO",
     numFaces: 1,
     outputFaceBlendshapes: true,
-    outputFacialTransformationMatrixes: false,
+    outputFacialTransformationMatrixes: true,
   });
 }
 
@@ -78,7 +82,8 @@ export async function loadFaceLandmarkDetector(): Promise<FaceLandmarkDetector> 
       for (const category of result.faceBlendshapes[0]?.categories ?? []) {
         blendshapes.set(category.categoryName, category.score);
       }
-      return { landmarks, blendshapes, timestampMs };
+      const headPose = headPoseFromMatrix(result.facialTransformationMatrixes[0]?.data ?? []);
+      return { landmarks, blendshapes, headPose, timestampMs };
     },
     close() {
       // Shared instance: closing is a no-op for consumers. Use

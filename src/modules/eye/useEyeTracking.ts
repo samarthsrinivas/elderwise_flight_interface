@@ -2,31 +2,42 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FaceLandmarkerUnavailableError, loadFaceLandmarkDetector } from "../../lib/faceLandmarker";
 import type { FaceLandmarkDetector } from "../../lib/faceLandmarker";
 import { toMessage } from "../../lib/errors";
-import type { EyeTaskId, EyeTaskResult } from "../assessment/types";
+import { headPoseDeviationDeg } from "../../lib/headPose";
+import type { EyeTaskId, EyeTaskResult, GazeCalibration } from "../assessment/types";
 import { analyzeEyeTask } from "./analyze";
+import { HEAD_POSE_TOLERANCE_DEG, calibrationSchedule, fitCalibration } from "./calibration";
 import { gazeFromLandmarks } from "./gaze";
 import type { GazePoint, GazeSample } from "./gaze";
 import { scheduleFor } from "./tasks";
-import type { TargetSchedule } from "./tasks";
+import type { CaptureSchedule } from "./tasks";
 
 export type EyePhase = "idle" | "requesting" | "loading-model" | "running" | "analyzing" | "done" | "error";
+export type CalibrationStatus = "none" | "ok" | "failed" | "skipped";
+
+const HEAD_WARNING_WINDOW = 30;
+const HEAD_WARNING_FRACTION = 0.2;
 
 export function useEyeTracking() {
   const [phase, setPhase] = useState<EyePhase>("idle");
   const [task, setTask] = useState<EyeTaskId | null>(null);
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibration, setCalibration] = useState<GazeCalibration | null>(null);
+  const [calibrationStatus, setCalibrationStatus] = useState<CalibrationStatus>("none");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [target, setTarget] = useState<GazePoint | null>(null);
   const [faceDetected, setFaceDetected] = useState(false);
+  const [headMoving, setHeadMoving] = useState(false);
   const [results, setResults] = useState<EyeTaskResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const detector = useRef<FaceLandmarkDetector | null>(null);
   const active = useRef<AbortController | null>(null);
+  const calibrationRef = useRef<GazeCalibration | null>(null);
   const frameId = useRef(0);
   const mounted = useRef(true);
   // Canvas and sampling share the exact clock without React updates per frame.
-  const timelineRef = useRef<{ readonly schedule: TargetSchedule; readonly startedAt: number } | null>(null);
+  const timelineRef = useRef<{ readonly schedule: CaptureSchedule; readonly startedAt: number } | null>(null);
 
   const release = useCallback(() => {
     active.current?.abort();
@@ -44,30 +55,41 @@ export function useEyeTracking() {
     release();
     setPhase("idle");
     setTask(null);
+    setCalibrating(false);
     setTarget(null);
     setElapsedMs(0);
     setFaceDetected(false);
+    setHeadMoving(false);
     setError(null);
   }, [release]);
 
-  const reset = useCallback(() => { cancel(); setResults([]); }, [cancel]);
+  const storeCalibration = useCallback((value: GazeCalibration | null, status: CalibrationStatus) => {
+    calibrationRef.current = value;
+    setCalibration(value);
+    setCalibrationStatus(status);
+    setResults([]);
+  }, []);
+
+  const reset = useCallback(() => { cancel(); storeCalibration(null, "none"); }, [cancel, storeCalibration]);
+
+  const skipCalibration = useCallback(() => storeCalibration(null, "skipped"), [storeCalibration]);
 
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; release(); };
   }, [release]);
 
-  const runTask = useCallback(async (id: EyeTaskId): Promise<EyeTaskResult> => {
+  const capture = useCallback(async (schedule: CaptureSchedule): Promise<GazeSample[]> => {
     if (active.current) throw new DOMException("An eye task is already running.", "InvalidStateError");
     const operation = new AbortController();
     active.current = operation;
     const { signal } = operation;
-    const schedule = scheduleFor(id);
+    const headRef = calibrationRef.current?.headPoseRef ?? null;
     setError(null);
-    setTask(id);
     setElapsedMs(0);
     setTarget(null);
     setFaceDetected(false);
+    setHeadMoving(false);
     setPhase("requesting");
     const aborted = new Promise<never>((_, reject) => {
       signal.addEventListener("abort", () => reject(new DOMException("Eye task cancelled.", "AbortError")), { once: true });
@@ -99,6 +121,7 @@ export function useEyeTracking() {
       setPhase("running");
       setTarget(schedule.targetAt(0));
       const samples: GazeSample[] = [];
+      const recentHeadGated: boolean[] = [];
       let lastSample = -Infinity;
       let lastUi = startedAt;
       let lastVideoTime = -1;
@@ -113,13 +136,20 @@ export function useEyeTracking() {
               lastVideoTime = video.currentTime;
               const gaze = frame ? gazeFromLandmarks(frame.landmarks, frame.blendshapes) : { x: 0.5, y: 0.5, blink: false };
               detected = frame !== null && Number.isFinite(gaze.x) && Number.isFinite(gaze.y);
-              samples.push({ t: elapsed, ...gaze, valid: detected });
+              const head = frame?.headPose ?? null;
+              samples.push({ t: elapsed, ...gaze, valid: detected, head });
+              if (headRef && detected) {
+                recentHeadGated.push(head !== null && headPoseDeviationDeg(head, headRef) > HEAD_POSE_TOLERANCE_DEG);
+                if (recentHeadGated.length > HEAD_WARNING_WINDOW) recentHeadGated.shift();
+              }
               lastSample = now;
             }
             if (now - lastUi >= 100) {
               setElapsedMs(elapsed);
               setTarget(schedule.targetAt(elapsed));
               setFaceDetected(detected);
+              setHeadMoving(recentHeadGated.length > 0 &&
+                recentHeadGated.filter(Boolean).length / recentHeadGated.length > HEAD_WARNING_FRACTION);
               lastUi = now;
             }
             if (elapsed >= schedule.durationMs) { resolve(); return; }
@@ -131,12 +161,7 @@ export function useEyeTracking() {
       signal.throwIfAborted();
       timelineRef.current = null;
       setPhase("analyzing");
-      const result = analyzeEyeTask(schedule, samples);
-      setResults(previous => [...previous.filter(value => value.task !== id), result]);
-      setElapsedMs(schedule.durationMs);
-      setTarget(null);
-      setPhase("done");
-      return result;
+      return samples;
     } catch (raised: unknown) {
       if (!signal.aborted && mounted.current) {
         release();
@@ -145,6 +170,7 @@ export function useEyeTracking() {
           : toMessage(raised));
         setTarget(null);
         setFaceDetected(false);
+        setHeadMoving(false);
         setPhase("error");
       }
       throw raised;
@@ -153,5 +179,43 @@ export function useEyeTracking() {
     }
   }, [release]);
 
-  return { phase, task, elapsedMs, target, faceDetected, results, error, videoRef, timelineRef, runTask, cancel, reset };
+  const finish = useCallback((durationMs: number) => {
+    setElapsedMs(durationMs);
+    setTarget(null);
+    setHeadMoving(false);
+    setPhase("done");
+  }, []);
+
+  const runTask = useCallback(async (id: EyeTaskId): Promise<EyeTaskResult> => {
+    if (active.current) throw new DOMException("An eye task is already running.", "InvalidStateError");
+    setTask(id);
+    setCalibrating(false);
+    const schedule = scheduleFor(id);
+    const samples = await capture(schedule);
+    const result = analyzeEyeTask(schedule, samples, calibrationRef.current);
+    setResults(previous => [...previous.filter(value => value.task !== id), result]);
+    finish(schedule.durationMs);
+    return result;
+  }, [capture, finish]);
+
+  const runCalibration = useCallback(async (): Promise<GazeCalibration | null> => {
+    if (active.current) throw new DOMException("An eye task is already running.", "InvalidStateError");
+    setTask(null);
+    setCalibrating(true);
+    const schedule = calibrationSchedule();
+    try {
+      const samples = await capture(schedule);
+      const fitted = fitCalibration(samples);
+      storeCalibration(fitted, fitted ? "ok" : "failed");
+      finish(schedule.durationMs);
+      return fitted;
+    } finally {
+      setCalibrating(false);
+    }
+  }, [capture, finish, storeCalibration]);
+
+  return {
+    phase, task, calibrating, calibration, calibrationStatus, elapsedMs, target, faceDetected, headMoving,
+    results, error, videoRef, timelineRef, runTask, runCalibration, skipCalibration, cancel, reset,
+  };
 }

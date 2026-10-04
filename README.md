@@ -9,9 +9,11 @@ older adult and reports aging-related biomarkers from three signals:
   (WavLM embeddings on MLX → SVR, ±7.6 years) from the two speech tasks.
 - **Vitals** — webcam remote photoplethysmography (heart rate, HRV RMSSD/SDNN,
   respiratory rate, signal-to-noise), analysed on device.
-- **Eye movement** — fixation, prosaccade and smooth-pursuit tasks tracked with
-  on-device face/iris landmarks (fixation stability, saccade count/latency/peak
-  velocity/accuracy, pursuit gain, blink rate).
+- **Eye movement** — a 10 s five-dot gaze calibration, then fixation, prosaccade
+  and smooth-pursuit tasks tracked with on-device face/iris landmarks (fixation
+  stability, saccade count/latency/peak velocity/accuracy, pursuit gain, blink
+  rate, target error, head motion). Head pose from the face transform gates
+  samples when the head moves more than 10° from its calibration pose.
 
 Results are banded (Steady / Watch / Follow up), saved to a local JSONL history,
 trended over time, and exportable as a PDF.
@@ -179,8 +181,11 @@ Apple secrets are present (see `docs/signing-setup.md`), and copies them into
 
 - rPPG and gaze metrics have been validated against synthetic signals, not yet
   against reference devices or a real cohort. Treat numbers as relative trends.
-- Smooth-pursuit gain uses percentile auto-scaling and currently over-reads
-  (~1.5 for ideal pursuit).
+- Gaze calibration is a per-axis linear fit of the iris proxy to five screen
+  dots (fit error shown as % of screen, ≤6% accepted). Without it, stability
+  and gain fall back to percentile auto-scaling, are not banded, and the eye
+  band is capped at Watch. Calibrated units are screen fractions, not degrees;
+  the pilot gate in `docs/decision-models-plan.md` (Task 6.7) is still open.
 - Face/iris tracking quality depends on lighting and camera; the UI reports
   coverage and quality per module.
 - The voice-age model is a population-level regression trained on VoxCeleb

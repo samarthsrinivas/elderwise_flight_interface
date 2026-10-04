@@ -169,3 +169,18 @@ export function trackingCoverage(samples: readonly GazeSample[]): number {
   return samples.length ? samples.filter(sample => sample.valid &&
     Number.isFinite(sample.t) && Number.isFinite(sample.x) && Number.isFinite(sample.y)).length / samples.length : 0;
 }
+
+/** RMS distance between gaze and the target it should be on, excluding saccades.
+ * Only meaningful when gaze and target share units (calibrated screen space). */
+export function targetErrorRms(samples: readonly GazeSample[], targetAt: (tMs: number) => GazePoint): number | null {
+  const mask = saccadeMask(samples);
+  let sum = 0;
+  let count = 0;
+  samples.forEach((sample, index) => {
+    if (!usable(sample) || mask[index]) return;
+    const target = targetAt(sample.t);
+    sum += (sample.x - target.x) ** 2 + (sample.y - target.y) ** 2;
+    count++;
+  });
+  return count ? Math.sqrt(sum / count) : null;
+}

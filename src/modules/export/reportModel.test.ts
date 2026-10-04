@@ -29,9 +29,22 @@ describe("reportModel", () => {
     // Eye section assertions
     const eyeSec = report.sections[2]!;
     expect(eyeSec.rows.find((r) => r.label.includes("Saccade Latency"))?.value).toBe("232 ms");
+    expect(eyeSec.rows.find((r) => r.label === "Gaze Calibration")?.value).toBe(
+      "Calibrated (fit error 2.7% of screen)",
+    );
 
     expect(report.summaryText).toContain("steady");
     expect(report.disclaimer).toContain("Elderwise provides wellness estimates only");
+  });
+
+  it("marks uncalibrated eye sessions as limited in the report", () => {
+    const report = buildReportModel({
+      ...sampleSession,
+      eye: sampleSession.eye ? { ...sampleSession.eye, calibration: null } : null,
+    });
+    const row = report.sections[2]!.rows.find((r) => r.label === "Gaze Calibration");
+    expect(row?.value).toBe("Uncalibrated (limited)");
+    expect(row?.note).toContain("not banded");
   });
 
   it("reports the voice-age estimate against the stated age", () => {

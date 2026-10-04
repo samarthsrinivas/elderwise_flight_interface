@@ -167,6 +167,18 @@ export function buildReportModel(session: AssessmentSession): ReportModel {
       label: "Smooth Pursuit Gain",
       value: formatNumber(pursuit?.pursuitGain ?? null, "", 2),
     });
+    const calibration = session.eye.calibration;
+    eyeRows.push({
+      label: "Gaze Calibration",
+      value: calibration
+        ? `Calibrated (fit error ${formatPercent(
+            Math.max(calibration.residualX, calibration.residualY) * 100,
+          )} of screen)`
+        : "Uncalibrated (limited)",
+      note: calibration
+        ? undefined
+        : "Stability and gain are auto-scaled proxies and were not banded.",
+    });
   } else {
     eyeRows.push({ label: "Ocular Biomarkers", value: "Not available" });
   }

@@ -3,9 +3,9 @@ import { toMessage } from "../../../lib/errors";
 import { bandMeta } from "../../../ui/bandColor";
 import { BandScale } from "../../../ui/BandScale";
 import { ScoreHero } from "../../../ui/ScoreHero";
+import { AgeGauge } from "../../../ui/AgeGauge";
 import { savePdf } from "../../export/api";
 import { buildAssessmentPdf } from "../../export/assessmentPdf";
-import { formatVoiceAge } from "../../export/reportModel";
 import type { AssessmentSession } from "../types";
 
 export interface SummaryStepProps {
@@ -62,7 +62,6 @@ export function SummaryStep({
 
   const prosaccade = session.eye?.tasks.find((t) => t.task === "prosaccade");
   const fixation = session.eye?.tasks.find((t) => t.task === "fixation");
-  const voiceAge = formatVoiceAge(session.voice?.age ?? null, session.participant.age);
 
   return (
     <div className="summary-step">
@@ -88,8 +87,16 @@ export function SummaryStep({
               <MetricRow label="Pitch (F0)" val={session.voice.markers.f0MeanHz ? `${Math.round(session.voice.markers.f0MeanHz)} Hz` : "--"} />
               <MetricRow label="Jitter" val={session.voice.markers.jitterPct ? `${session.voice.markers.jitterPct.toFixed(2)}%` : "--"} />
               <MetricRow label="Shimmer" val={session.voice.markers.shimmerPct ? `${session.voice.markers.shimmerPct.toFixed(2)}%` : "--"} />
-              <MetricRow label="Voice age" val={voiceAge?.value ?? "--"} />
-              {voiceAge?.note && <p className="hint summary-metric-note">{voiceAge.note}</p>}
+              {session.voice.age ? (
+                <AgeGauge
+                  size="sm"
+                  voiceAge={session.voice.age.ageYears}
+                  maeYears={session.voice.age.maeYears}
+                  statedAge={session.participant.age}
+                />
+              ) : (
+                <MetricRow label="Voice age" val="--" />
+              )}
               <MetricRow label="Quality" val={session.voice.quality} />
             </div>
           ) : (
@@ -124,6 +131,14 @@ export function SummaryStep({
               <MetricRow label="Saccade latency" val={prosaccade?.meanSaccadeLatencyMs ? `${Math.round(prosaccade.meanSaccadeLatencyMs)} ms` : "--"} />
               <MetricRow label="Fixation stability" val={fixation?.fixationStability ? fixation.fixationStability.toFixed(3) : "--"} />
               <MetricRow label="Tracking accuracy" val={prosaccade?.saccadeAccuracy ? `${Math.round(prosaccade.saccadeAccuracy * 100)}%` : "--"} />
+              <MetricRow
+                label="Gaze calibration"
+                val={
+                  session.eye.calibration
+                    ? `Calibrated (fit error ${(Math.max(session.eye.calibration.residualX, session.eye.calibration.residualY) * 100).toFixed(1)}%)`
+                    : "Uncalibrated (limited)"
+                }
+              />
               <MetricRow label="Quality" val={session.eye.quality} />
             </div>
           ) : (

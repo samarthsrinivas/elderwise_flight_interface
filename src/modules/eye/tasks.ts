@@ -2,12 +2,16 @@ import type { EyeTaskId } from "../assessment/types";
 import type { GazePoint } from "./gaze";
 import type { TargetJump } from "./metrics";
 
-export interface TargetSchedule {
-  readonly task: EyeTaskId;
+/** Anything the sampling loop can drive: a timed target plus spoken instructions. */
+export interface CaptureSchedule {
   readonly durationMs: number;
   readonly targetAt: (tMs: number) => GazePoint;
-  readonly jumps: TargetJump[];
   readonly instructions: string;
+}
+
+export interface TargetSchedule extends CaptureSchedule {
+  readonly task: EyeTaskId;
+  readonly jumps: TargetJump[];
 }
 
 export const EYE_TASK_ORDER = ["fixation", "prosaccade", "smooth-pursuit"] as const;

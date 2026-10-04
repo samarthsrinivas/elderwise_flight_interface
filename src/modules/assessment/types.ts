@@ -142,9 +142,33 @@ export const eyeTaskIdSchema = z.enum(["fixation", "prosaccade", "smooth-pursuit
 export type EyeTaskId = z.infer<typeof eyeTaskIdSchema>;
 
 /**
- * Gaze is expressed in normalised screen units (0..1 on each axis) because
- * there is no per-user calibration. Velocities are therefore in units/s, not
- * deg/s; compare within-person over time, not against population norms.
+ * Per-axis linear map from the iris-position proxy to screen position
+ * (screen = a + b * proxy), fitted from a 5-dot calibration sequence.
+ * Residuals are RMS fit error in screen units. `headPoseRef` is the
+ * participant's head orientation during calibration; samples that drift
+ * more than HEAD_POSE_TOLERANCE_DEG from it are discarded.
+ */
+export const gazeCalibrationSchema = z.object({
+  ax: z.number(),
+  bx: z.number(),
+  ay: z.number(),
+  by: z.number(),
+  residualX: z.number(),
+  residualY: z.number(),
+  pointsUsed: z.number().int(),
+  headPoseRef: z.object({ yawDeg: z.number(), pitchDeg: z.number() }).nullable(),
+});
+export type GazeCalibration = z.infer<typeof gazeCalibrationSchema>;
+
+export const gazeUnitsSchema = z.enum(["proxy", "screen"]);
+export type GazeUnits = z.infer<typeof gazeUnitsSchema>;
+
+/**
+ * Gaze is expressed in normalised screen units (0..1 on each axis). With a
+ * calibration (`gazeUnits: "screen"`) the units are real screen fractions;
+ * without one (`gazeUnits: "proxy"`) they come from per-task percentile
+ * auto-scaling and absolute stability/gain are NOT comparable across
+ * sessions. Velocities are in units/s, not deg/s.
  */
 export const eyeTaskResultSchema = z.object({
   task: eyeTaskIdSchema,
@@ -165,6 +189,12 @@ export const eyeTaskResultSchema = z.object({
   pursuitGain: z.number().nullable(),
   /** Blinks per minute. */
   blinkRatePerMin: z.number().nullable(),
+  /** Sessions recorded before calibration existed default to "proxy". */
+  gazeUnits: gazeUnitsSchema.default("proxy"),
+  /** RMS distance between gaze and the on-screen target, excluding saccades (normalised units). */
+  targetErrorRms: z.number().nullable().default(null),
+  /** RMS head rotation away from the calibration reference (degrees). */
+  headMotionDeg: z.number().nullable().default(null),
 });
 export type EyeTaskResult = z.infer<typeof eyeTaskResultSchema>;
 
@@ -172,6 +202,7 @@ export const eyeResultSchema = z.object({
   tasks: z.array(eyeTaskResultSchema),
   quality: signalQualitySchema,
   band: bandToneSchema,
+  calibration: gazeCalibrationSchema.nullable().default(null),
 });
 export type EyeResult = z.infer<typeof eyeResultSchema>;
 

@@ -45,16 +45,29 @@ async function estimateAgeIfSupported(task: VoiceTaskId, wav: Uint8Array): Promi
   }
 }
 
+export interface CaptureVoiceTaskOptions {
+  readonly onLevel?: (rms: number) => void;
+  /** Centered time-domain window (-1..1) per animation frame while the mic is open. */
+  readonly onWaveform?: (samples: Float32Array) => void;
+  /** Fires once the clip is captured and analysis (transcription, voice age) begins. */
+  readonly onRecorded?: () => void;
+  readonly signal?: AbortSignal;
+}
+
 export async function captureVoiceTask(
   spec: VoiceTaskSpec,
-  opts: { readonly onLevel?: (rms: number) => void; readonly signal?: AbortSignal } = {},
+  opts: CaptureVoiceTaskOptions = {},
 ): Promise<VoiceTaskResult> {
   opts.signal?.throwIfAborted();
   await waitForSpeechIdle();
   opts.signal?.throwIfAborted();
   // The recorder owns microphone cleanup and cannot be interrupted; abort at stage boundaries.
-  const wav = await recordWavClip(spec.durationS * 1000, opts.onLevel ? { onAudioLevel: opts.onLevel } : {});
+  const wav = await recordWavClip(spec.durationS * 1000, {
+    ...(opts.onLevel ? { onAudioLevel: opts.onLevel } : {}),
+    ...(opts.onWaveform ? { onWaveform: opts.onWaveform } : {}),
+  });
   opts.signal?.throwIfAborted();
+  opts.onRecorded?.();
   const [transcript, ageEstimate] = await Promise.all([
     transcribeIfConfigured(wav, opts.signal),
     estimateAgeIfSupported(spec.id, wav),
