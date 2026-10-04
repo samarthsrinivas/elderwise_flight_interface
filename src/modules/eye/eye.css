@@ -1,0 +1,27 @@
+.eye-module { display: grid; gap: var(--space-4); color: var(--text); min-width: 0; }
+.eye-module h2, .eye-module h3, .eye-module p { margin: 0; }
+.eye-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.eye-heading h2 { font-size: var(--text-2xl); }
+.eye-heading p, .eye-results p { color: var(--text-muted); font-size: var(--text-md); line-height: 1.6; }
+.eye-status { border-radius: var(--radius-pill); padding: var(--space-2) var(--space-3); background: var(--surface-muted); font-size: var(--text-sm); }
+.eye-instructions { font-size: var(--text-xl); line-height: 1.5; }
+.eye-stage { position: relative; overflow: hidden; border-radius: var(--radius-md); background: var(--text); }
+.eye-stage canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+.eye-stage-message { position: absolute; inset: var(--space-4); display: grid; place-content: center; text-align: center; color: var(--surface); font-size: var(--text-lg); pointer-events: none; }
+.eye-video { position: absolute; right: var(--space-2); bottom: var(--space-2); width: clamp(48px, 12%, 96px); height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-sm); transform: scaleX(-1); }
+.eye-progress { display: flex; align-items: center; gap: var(--space-3); font-variant-numeric: tabular-nums; font-size: var(--text-sm); }
+.eye-progress progress { flex: 1; min-width: 0; accent-color: var(--color-accent-strong); }
+.eye-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.eye-actions button { min-height: 44px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); background: var(--surface); font: inherit; cursor: pointer; }
+.eye-actions button:not(:disabled):hover { background: var(--surface-muted); }
+.eye-actions button:disabled { color: var(--text-muted); background: var(--surface-muted); cursor: default; }
+.eye-actions button:focus-visible, .eye-table-scroll:focus-visible { outline: 3px solid var(--color-accent-strong); outline-offset: 3px; }
+.eye-error { background: var(--band-limited-soft); padding: var(--space-4); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.eye-results { display: grid; gap: var(--space-3); min-width: 0; }
+.eye-band { display: inline-block; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); font-size: var(--text-sm); }
+.eye-table-scroll { overflow-x: auto; }
+.eye-module table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.eye-module caption { text-align: left; padding-block: var(--space-2); color: var(--text-muted); }
+.eye-module th, .eye-module td { text-align: left; padding: var(--space-3); border-bottom: 1px solid var(--border); }
+.eye-module th { font-weight: 600; }
+@media (max-width: 480px) { .eye-actions button { flex: 1 1 100%; } }

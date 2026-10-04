@@ -1,0 +1,10 @@
+export { gazeFromLandmarks, normaliseGaze } from "./gaze";
+export type { GazeSample, GazePoint } from "./gaze";
+export { velocity, detectSaccades, fixationStability, saccadeLatencies, saccadeAccuracy, pursuitGain, blinkRatePerMin, trackingCoverage } from "./metrics";
+export type { Saccade, TargetJump } from "./metrics";
+export { EYE_TASK_ORDER, fixationSchedule, prosaccadeSchedule, smoothPursuitSchedule, scheduleFor } from "./tasks";
+export type { TargetSchedule } from "./tasks";
+export { analyzeEyeTask, aggregateEyeResults } from "./analyze";
+export { useEyeTracking } from "./useEyeTracking";
+export type { EyePhase } from "./useEyeTracking";
+export { EyeTaskCanvas } from "./EyeTaskCanvas";
