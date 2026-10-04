@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "elderwise",
+  "compatibility_date": "2026-07-03",
+  "assets": {
+    "directory": "./site",
+    "not_found_handling": "404-page"
+  }
+}

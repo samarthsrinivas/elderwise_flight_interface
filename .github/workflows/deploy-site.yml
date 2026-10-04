@@ -1,0 +1,66 @@
+name: deploy site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-site.yml"
+      - "package.json"
+      - "bun.lock"
+      - "wrangler.jsonc"
+      - "site/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+  SITE_SMOKE_URL: https://elderwise.yanok.workers.dev
+
+jobs:
+  deploy:
+    name: deploy Worker site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: deploy Worker static assets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID secret is required to deploy the Elderwise site"
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret is required to deploy the Elderwise site"
+            exit 1
+          fi
+          bunx wrangler deploy
+
+      - name: smoke public site
+        run: |
+          set -euo pipefail
+          VERSION="$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version)")"
+          HTML="$(curl -fsSL --connect-timeout 10 --max-time 30 --retry 6 --retry-delay 10 --retry-all-errors "${SITE_SMOKE_URL}/")"
+          printf '%s' "$HTML" | grep -F "v${VERSION}"
+          for DMG in elderwise-apple-silicon.dmg elderwise-intel.dmg; do
+            if [ -f "site/downloads/${DMG}" ]; then
+              curl -fsSI --connect-timeout 10 --max-time 30 --retry 6 --retry-delay 10 --retry-all-errors "${SITE_SMOKE_URL}/downloads/${DMG}"
+            fi
+          done

@@ -1,0 +1,215 @@
+name: release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Elderwise ships macOS installers only (Apple Silicon + Intel).
+#
+# Installers build only after (a) the full pre-flight check suite (ci.yml)
+# passes and (b) the tag matches the version in package.json,
+# src-tauri/tauri.conf.json, and src-tauri/Cargo.toml.
+#
+# Signing: when the Apple signing secrets are configured, installers are
+# signed with the Developer ID certificate and notarized. When they are
+# absent (e.g. on forks), the build falls back to unsigned installers.
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  BUN_VERSION: 1.3.14
+
+jobs:
+  preflight:
+    uses: ./.github/workflows/ci.yml
+
+  version-check:
+    name: tag matches manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: compare tag to package.json / tauri.conf.json / Cargo.toml
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(jq -r .version package.json)
+          CONF=$(jq -r .version src-tauri/tauri.conf.json)
+          CARGO=$(grep -m1 '^version = ' src-tauri/Cargo.toml | cut -d'"' -f2)
+          echo "tag=$TAG package.json=$PKG tauri.conf.json=$CONF Cargo.toml=$CARGO"
+          if [ "$TAG" != "$PKG" ] || [ "$TAG" != "$CONF" ] || [ "$TAG" != "$CARGO" ]; then
+            echo "::error::version mismatch - bump all three manifests to $TAG before tagging"
+            exit 1
+          fi
+          echo "versions consistent"
+
+  publish-tauri:
+    needs: [preflight, version-check]
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: "macos-15" # Apple Silicon (M1+)
+            args: "--target aarch64-apple-darwin"
+          - platform: "macos-15" # Intel
+            args: "--target x86_64-apple-darwin"
+
+    runs-on: ${{ matrix.platform }}
+    # `secrets.*` is not readable in step-level `if:` expressions, so surface
+    # presence as job-level flags. Only the FLAGS live here - the secret
+    # values themselves must never be job-level env: an absent secret would
+    # become an empty-string env var, which the Tauri bundler treats as "set"
+    # (it checks existence, not content) and then hard-fails trying to
+    # `security import` zero bytes.
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAS_NOTARY_KEY: ${{ secrets.APPLE_API_ISSUER != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_CONTENT != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # Import the Developer ID cert into a throwaway keychain, then expose
+      # APPLE_SIGNING_IDENTITY to later steps via $GITHUB_ENV. The env var
+      # overrides the signingIdentity pinned in tauri.conf.json, and because
+      # this step is skipped when the secrets are absent, the Tauri step
+      # below never sees empty APPLE_* vars.
+      - name: import Apple Developer ID certificate
+        if: env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/build.keychain"
+          security default-keychain -s "$RUNNER_TEMP/build.keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/build.keychain"
+          security set-keychain-settings -t 3600 -u "$RUNNER_TEMP/build.keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/build.keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/build.keychain"
+          security find-identity -v -p codesigning "$RUNNER_TEMP/build.keychain"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
+      # Notarization wants the App Store Connect API key as a file on disk;
+      # materialize it from the secret and point Tauri at it. The multiline
+      # .p8 content only ever touches the file, never $GITHUB_ENV.
+      - name: write App Store Connect API key
+        if: env.HAS_APPLE_CERT == 'true' && env.HAS_NOTARY_KEY == 'true'
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/apple-api-key.p8"
+          {
+            echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            echo "APPLE_API_KEY=$APPLE_API_KEY"
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/apple-api-key.p8"
+          } >> "$GITHUB_ENV"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # APPLE_* signing/notarization env arrives via $GITHUB_ENV from the
+          # guarded steps above - deliberately not set here.
+        with:
+          tauriScript: bun run tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "Elderwise ${{ github.ref_name }}"
+          releaseBody: "Download the macOS installer below. Elderwise is a local-first desktop app that estimates aging-related voice, vitals and eye-movement biomarkers. Public stable downloads are mirrored to the Elderwise site after the site sync completes."
+          releaseDraft: false
+          prerelease: false
+          # Retry transient failures such as the bundler download dropping
+          # mid-fetch ("Peer disconnected"), which is not a build error.
+          retryAttempts: 2
+          # Without the cert, `--no-sign` skips codesigning entirely - the
+          # signingIdentity pinned in tauri.conf.json would otherwise make
+          # codesign fail on a runner that lacks the certificate.
+          args: ${{ matrix.args }}${{ env.HAS_APPLE_CERT != 'true' && ' --no-sign' || '' }}
+
+  # GitHub Release assets are the canonical downloads; the Worker site serves
+  # a public mirror from site/downloads/ under stable filenames. Sync the
+  # fresh installers onto main, then explicitly dispatch the Worker deploy.
+  # GitHub suppresses push-triggered workflows created by GITHUB_TOKEN pushes.
+  publish-site-downloads:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: sync installers into site/downloads and bump the version label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          dispatch_site_deploy() {
+            gh workflow run deploy-site.yml --ref main
+          }
+          VERSION="${TAG#v}"
+          mkdir -p site/downloads
+          gh release download "$TAG" --pattern "*_aarch64.dmg" --output site/downloads/elderwise-apple-silicon.dmg --clobber
+          gh release download "$TAG" --pattern "*_x64.dmg" --output site/downloads/elderwise-intel.dmg --clobber
+          VERSION_LABEL="v${VERSION}" python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION_LABEL"]
+          pattern = re.compile(r'<span class="dl-version">[^<]*</span>')
+          for path in Path(".").glob("site/**/*.html"):
+              text = path.read_text()
+              updated = pattern.sub(f'<span class="dl-version">{version}</span>', text)
+              path.write_text(updated)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/downloads site
+          if git diff --cached --quiet; then
+            echo "site downloads already current"
+            dispatch_site_deploy
+            exit 0
+          fi
+          git commit -m "Publish the ${TAG} installers to the site downloads"
+          for attempt in 1 2 3; do
+            if git pull --rebase origin main && git push origin main; then
+              dispatch_site_deploy
+              exit 0
+            fi
+            git rebase --abort || true
+            echo "publish push attempt ${attempt} failed; retrying after latest main"
+            sleep 5
+          done
+          echo "::error::failed to publish site downloads after 3 attempts"
+          exit 1

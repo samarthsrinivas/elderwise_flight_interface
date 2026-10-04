@@ -1,0 +1,66 @@
+name: fast feedback
+
+# Quick pull-request signal for everyday development. This workflow is
+# intentionally Ubuntu-only and omits the macOS Rust platform gate; the full
+# `ci` workflow remains the merge/release confidence gate.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: fast-feedback-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: 1.3.14
+
+jobs:
+  workflow-lint:
+    name: workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: lint workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+
+  frontend:
+    name: frontend fast checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: typecheck
+        run: bunx tsc --noEmit
+
+      - name: unit tests
+        run: bun run test
+
+
+  rust-format:
+    name: rust format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: format
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check

@@ -1,0 +1,80 @@
+name: signing-preflight
+
+# Validates the Apple signing/notarization secrets on a macOS runner WITHOUT
+# building or releasing anything. Run it after adding or rotating any of the
+# seven APPLE_*/KEYCHAIN_* secrets, before trusting a release tag to them.
+# See docs/signing-setup.md.
+on:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: macos-15
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' }}
+      HAS_NOTARY_KEY: ${{ secrets.APPLE_API_ISSUER != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_CONTENT != '' }}
+    steps:
+      - name: report which secret groups are present
+        run: |
+          echo "signing secrets complete: $HAS_APPLE_CERT"
+          echo "notarization secrets complete: $HAS_NOTARY_KEY"
+          if [ "$HAS_APPLE_CERT" != "true" ]; then
+            echo "::error::signing secrets incomplete - all four of APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, KEYCHAIN_PASSWORD, APPLE_SIGNING_IDENTITY are required"
+            exit 1
+          fi
+
+      - name: import the certificate and match the signing identity
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          if [ ! -s "$RUNNER_TEMP/certificate.p12" ]; then
+            echo "::error::APPLE_CERTIFICATE decoded to zero bytes - the secret is not valid base64 of a .p12"
+            exit 1
+          fi
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/preflight.keychain"
+          security default-keychain -s "$RUNNER_TEMP/preflight.keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/preflight.keychain"
+          if ! security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/preflight.keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign; then
+            echo "::error::security import failed - wrong APPLE_CERTIFICATE_PASSWORD, or the .p12 lacks the private key / uses OpenSSL 3.x ciphers (re-export via Keychain Access, see docs/signing-setup.md)"
+            exit 1
+          fi
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/preflight.keychain" >/dev/null
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          FOUND=$(security find-identity -v -p codesigning "$RUNNER_TEMP/preflight.keychain")
+          echo "$FOUND"
+          if ! echo "$FOUND" | grep -Fq "$APPLE_SIGNING_IDENTITY"; then
+            echo "::error::the imported certificate does not match APPLE_SIGNING_IDENTITY - check the exact string from 'security find-identity -v -p codesigning'"
+            exit 1
+          fi
+          echo "certificate imports cleanly and matches the signing identity"
+
+      - name: validate the notarization credentials
+        if: env.HAS_NOTARY_KEY == 'true'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/preflight-key.p8"
+          if xcrun notarytool history \
+            --key "$RUNNER_TEMP/preflight-key.p8" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" >/dev/null 2>&1; then
+            echo "notarization credentials are valid"
+          else
+            echo "::error::notarytool rejected the App Store Connect credentials - check APPLE_API_ISSUER (UUID), APPLE_API_KEY (Key ID), and that APPLE_API_KEY_CONTENT is the raw .p8 contents"
+            exit 1
+          fi
+
+      - name: notarization not yet configured
+        if: env.HAS_NOTARY_KEY != 'true'
+        run: |
+          echo "::warning::notarization secrets absent (APPLE_API_ISSUER / APPLE_API_KEY / APPLE_API_KEY_CONTENT) - releases will sign but skip notarization, and Gatekeeper will block downloaded builds. Complete Part 2 of docs/signing-setup.md."
