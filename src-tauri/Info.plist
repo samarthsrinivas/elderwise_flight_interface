@@ -3,8 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Elderwise uses your microphone to record short speech tasks for local voice biomarker analysis.</string>
-  <key>NSCameraUsageDescription</key>
-  <string>Elderwise uses your camera to estimate heart rate, breathing rate and eye movement locally on this device.</string>
+  <string>Elderwise listens to your voice during the "aaah" exercise. Recordings stay on this computer.</string>
 </dict>
 </plist>
