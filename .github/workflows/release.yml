@@ -88,6 +88,17 @@ jobs:
       - name: install frontend dependencies
         run: bun install --frozen-lockfile
 
+      # The face landmarker model and MediaPipe WASM runtime are gitignored
+      # (public/models/*.task, public/mediapipe/wasm/) and get embedded into
+      # the binary from dist/ at build time. Without them the shipped app
+      # fails the Vitals/Eye steps with "face detector unavailable" (v0.2.1).
+      - name: fetch on-device ML assets
+        run: |
+          set -euo pipefail
+          bun run models:fetch
+          test -s public/models/face_landmarker.task
+          test -s public/mediapipe/wasm/vision_wasm_internal.wasm
+
       # Import the Developer ID cert into a throwaway keychain, then expose
       # APPLE_SIGNING_IDENTITY to later steps via $GITHUB_ENV. The env var
       # overrides the signingIdentity pinned in tauri.conf.json, and because
