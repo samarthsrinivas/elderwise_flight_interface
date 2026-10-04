@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { EyeTaskCanvas } from "../../eye/EyeTaskCanvas";
 import { useEyeTracking } from "../../eye/useEyeTracking";
 import type { EyeResult } from "../types";
@@ -16,14 +16,11 @@ export function EyeStep({
   onSkip,
   onBack,
 }: EyeStepProps) {
+  // useEyeTracking releases the camera on unmount itself. Do not add a
+  // cleanup effect keyed on `controller` here: it is a new object every render,
+  // so the cleanup would cancel the task as soon as runTask() sets state.
   const controller = useEyeTracking();
   const [recordedResult, setRecordedResult] = useState<EyeResult | null>(eye);
-
-  useEffect(() => {
-    return () => {
-      controller.cancel();
-    };
-  }, [controller]);
 
   const handleAllDone = (result: EyeResult) => {
     setRecordedResult(result);

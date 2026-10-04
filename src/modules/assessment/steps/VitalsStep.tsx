@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useVitalsCapture } from "../../vitals/useVitalsCapture";
 import { VitalsPanel } from "../../vitals/VitalsPanel";
 import type { VitalsResult } from "../types";
@@ -16,14 +16,11 @@ export function VitalsStep({
   onSkip,
   onBack,
 }: VitalsStepProps) {
+  // useVitalsCapture releases the camera on unmount itself. Do not add a
+  // cleanup effect keyed on `controller` here: it is a new object every render,
+  // so the cleanup would cancel the capture as soon as start() sets state.
   const controller = useVitalsCapture({ durationS: 30 });
   const [recordedResult, setRecordedResult] = useState<VitalsResult | null>(vitals);
-
-  useEffect(() => {
-    return () => {
-      controller.cancel();
-    };
-  }, [controller]);
 
   const handleComplete = (result: VitalsResult) => {
     setRecordedResult(result);
