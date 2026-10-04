@@ -25,8 +25,8 @@ fn responses_body_uses_latest_openai_streaming_contract() {
             content: "a1".to_string(),
         },
     ];
-    let body = responses_body("gpt-5.5", "sys", &turns, 400);
-    assert_eq!(body["model"], "gpt-5.5");
+    let body = responses_body("gpt-6.1-sol", "sys", &turns, 400);
+    assert_eq!(body["model"], "gpt-6.1-sol");
     assert_eq!(body["instructions"], "sys");
     assert_eq!(body["max_output_tokens"], json!(400));
     assert_eq!(body["stream"], json!(true));

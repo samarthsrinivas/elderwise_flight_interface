@@ -7,13 +7,13 @@ const baseStatus: AiStatus = {
     provider: "elevenlabs",
     configured: true,
     source: "keychain",
-    model: "scribe_v1",
+    model: "scribe_v2",
   },
   chat: {
     provider: "openai",
     configured: true,
     source: "keychain",
-    model: "gpt-5.5",
+    model: "gpt-6.1-sol",
   },
   voice: {
     provider: "system",

@@ -4,11 +4,22 @@ import { toMessage } from "../../lib/errors";
 import type { EyeResult, EyeTaskId } from "../assessment/types";
 import { aggregateEyeResults } from "./analyze";
 import { EYE_TASK_ORDER, scheduleFor } from "./tasks";
-import type { useEyeTracking } from "./useEyeTracking";
+import type { EyePhase, useEyeTracking } from "./useEyeTracking";
 import "./eye.css";
 
 const labels = { fixation: "Keep eyes still", prosaccade: "Look at each jump", "smooth-pursuit": "Follow the dot" } as const;
 const display = (value: number | null, digits = 2) => value === null ? "Not available" : value.toFixed(digits);
+
+export const cameraStatusText = (phase: EyePhase, faceDetected: boolean): string => {
+  switch (phase) {
+    case "requesting": return "Starting camera…";
+    case "loading-model": return "Loading face model…";
+    case "running":
+    case "analyzing": return faceDetected ? "Face detected" : "Face not detected";
+    case "done": return "Camera ready";
+    default: return "Camera off";
+  }
+};
 
 export function EyeTaskCanvas({ controller, onAllDone }: {
   readonly controller: ReturnType<typeof useEyeTracking>;
@@ -82,7 +93,7 @@ export function EyeTaskCanvas({ controller, onAllDone }: {
 
   return <section className="eye-module" aria-label="Eye movement tasks">
     <header className="eye-heading"><div><h2>Eye movement</h2><p>Three short tasks. Your camera stays on this device.</p></div>
-      <span className="eye-status" role="status">{controller.faceDetected ? "Face detected" : "Face not detected"}</span></header>
+      <span className="eye-status" role="status">{cameraStatusText(controller.phase, controller.faceDetected)}</span></header>
     <p id={instructionId} className="eye-instructions">{schedule.instructions}</p>
     <div className="eye-stage"><canvas ref={canvasRef} width={960} height={540} aria-label="Eye movement target" aria-describedby={instructionId} />
       {controller.phase !== "running" && <p className="eye-stage-message">{busy ? "Preparing your camera and local model..." : nextTask ? "Get comfortable, then start the next task." : "All three tasks complete."}</p>}

@@ -106,9 +106,9 @@ mod tests {
         assert_eq!(
             value,
             json!({
-                "asr": {"provider": "elevenlabs", "configured": true, "source": "keychain", "model": "scribe_v1"},
-                "chat": {"provider": "openai", "configured": true, "source": "env", "model": "gpt-5.5"},
-                "voice": {"provider": "elevenlabs", "configured": true, "source": "keychain", "model": "eleven_multilingual_v2"},
+                "asr": {"provider": "elevenlabs", "configured": true, "source": "keychain", "model": "scribe_v2"},
+                "chat": {"provider": "openai", "configured": true, "source": "env", "model": "gpt-6.1-sol"},
+                "voice": {"provider": "elevenlabs", "configured": true, "source": "keychain", "model": "eleven_v4"},
                 "keys": {"openai": {"configured": true, "source": "env"}, "elevenlabs": {"configured": true, "source": "keychain"}}
             })
         );

@@ -7,13 +7,13 @@ const configuredStatus: AiStatus = {
     provider: "elevenlabs",
     configured: true,
     source: "keychain",
-    model: "scribe_v1",
+    model: "scribe_v2",
   },
   chat: {
     provider: "openai",
     configured: true,
     source: "env",
-    model: "gpt-5.5",
+    model: "gpt-6.1-sol",
   },
   voice: {
     provider: "system",
@@ -36,7 +36,7 @@ describe("AI active status summary", () => {
         provider: "ElevenLabs",
         source: "keychain",
         state: "active",
-        details: ["Model: scribe_v1"],
+        details: ["Model: scribe_v2"],
       },
       {
         id: "chat",
@@ -44,7 +44,7 @@ describe("AI active status summary", () => {
         provider: "OpenAI",
         source: "env",
         state: "active",
-        details: ["Model: gpt-5.5"],
+        details: ["Model: gpt-6.1-sol"],
       },
       {
         id: "voice",

@@ -54,7 +54,7 @@ fn elevenlabs_stt_posts_multipart_to_speech_to_text_endpoint() {
         wire: asr::AsrWire::Elevenlabs,
         base_url,
         api_key: "test-key".to_string(),
-        model: "scribe_v1".to_string(),
+        model: "scribe_v2".to_string(),
     };
     let transcript = tauri::async_runtime::block_on(async {
         let state = AiState::new();
@@ -72,7 +72,7 @@ fn elevenlabs_stt_posts_multipart_to_speech_to_text_endpoint() {
     assert!(request.contains("xi-api-key: test-key\r\n"));
     assert!(!request.contains("authorization:"));
     assert!(request.contains("multipart/form-data; boundary="));
-    assert!(request.contains("name=\"model_id\"\r\n\r\nscribe_v1"));
+    assert!(request.contains("name=\"model_id\"\r\n\r\nscribe_v2"));
     assert!(request.contains("name=\"file\"; filename=\"audio.wav\""));
     assert!(request.contains("Content-Type: audio/wav"));
     assert!(request.contains("RIFF-test-audio"));
@@ -114,7 +114,7 @@ fn asr_maps_authentication_and_rate_limit_errors() {
             wire: asr::AsrWire::Elevenlabs,
             base_url,
             api_key: "test-key".to_string(),
-            model: "scribe_v1".to_string(),
+            model: "scribe_v2".to_string(),
         };
         let error = tauri::async_runtime::block_on(async {
             let state = AiState::new();
@@ -154,7 +154,7 @@ fn complete_reads_responses_sse_over_http() {
         wire: chat::ChatWire::OpenAiResponses,
         base_url,
         api_key: Some("test-key".to_string()),
-        model: "gpt-5.5".to_string(),
+        model: "gpt-6.1-sol".to_string(),
     };
     let result = tauri::async_runtime::block_on(async {
         let state = AiState::new();
@@ -208,7 +208,7 @@ fn elevenlabs_tts_returns_audio_bytes_over_http() {
         base_url,
         api_key: "test-key".to_string(),
         voice_id: "voice-1".to_string(),
-        model: "eleven_multilingual_v2".to_string(),
+        model: "eleven_v4".to_string(),
     };
     let audio = tauri::async_runtime::block_on(async {
         let state = AiState::new();

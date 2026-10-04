@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toMessage } from "../../../lib/errors";
 import { isVoiceInputSupported } from "../../voice/captureVoiceTask";
 import type { Participant } from "../types";
 
@@ -7,6 +8,41 @@ export interface SetupStepProps {
   readonly onStart: (participant: Participant) => void;
 }
 
+type CameraCheck =
+  | { readonly status: "untested" | "testing" | "stalled" | "unavailable"; readonly detail: string | null }
+  | { readonly status: "live"; readonly detail: string }
+  | { readonly status: "blocked"; readonly detail: string; readonly hint: string };
+
+const CAMERA_STALL_MS = 10_000;
+const CAMERA_SETTINGS_HINT = "Open System Settings → Privacy & Security → Camera, switch on Elderwise, then quit and reopen the app.";
+
+const cameraHint = (name: string): string => {
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return `macOS blocked camera access for Elderwise. ${CAMERA_SETTINGS_HINT}`;
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "No usable camera was found. Connect or enable a camera and try again.";
+    case "NotReadableError":
+    case "AbortError":
+      return "The camera could not start. Close other apps that may be using it (FaceTime, Zoom, Photo Booth) and try again.";
+    default:
+      return CAMERA_SETTINGS_HINT;
+  }
+};
+
+const cameraBadge = (check: CameraCheck, supported: boolean): { readonly tone: string; readonly label: string } => {
+  if (!supported || check.status === "unavailable") return { tone: "warn", label: "Unavailable" };
+  switch (check.status) {
+    case "live": return { tone: "ok", label: "Live" };
+    case "blocked": return { tone: "warn", label: "Blocked" };
+    case "testing": return { tone: "neutral", label: "Testing…" };
+    case "stalled": return { tone: "neutral", label: "Waiting…" };
+    default: return { tone: "ok", label: "Ready" };
+  }
+};
+
 export function SetupStep({ participant, onStart }: SetupStepProps) {
   const [ageInput, setAgeInput] = useState<string>(
     participant.age !== null ? String(participant.age) : "",
@@ -14,12 +50,69 @@ export function SetupStep({ participant, onStart }: SetupStepProps) {
   const [sex, setSex] = useState<Participant["sex"]>(participant.sex);
   const [micSupported, setMicSupported] = useState<boolean>(true);
   const [cameraSupported, setCameraSupported] = useState<boolean>(true);
+  const [cameraCheck, setCameraCheck] = useState<CameraCheck>({ status: "untested", detail: null });
+  const previewRef = useRef<HTMLVideoElement>(null);
+  const previewStream = useRef<MediaStream | null>(null);
+  // Bumped on every stop/start so a late getUserMedia result from an abandoned test is discarded.
+  const testGeneration = useRef(0);
 
   useEffect(() => {
     setMicSupported(isVoiceInputSupported());
     const hasCam = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
     setCameraSupported(hasCam);
   }, []);
+
+  const stopCamera = useCallback(() => {
+    testGeneration.current += 1;
+    previewStream.current?.getTracks().forEach(track => track.stop());
+    previewStream.current = null;
+    if (previewRef.current) previewRef.current.srcObject = null;
+  }, []);
+
+  useEffect(() => stopCamera, [stopCamera]);
+
+  const testCamera = async () => {
+    stopCamera();
+    const generation = testGeneration.current;
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setCameraCheck({ status: "unavailable", detail: "Camera access is unavailable in this environment." });
+      return;
+    }
+    setCameraCheck({ status: "testing", detail: null });
+    const stallTimer = window.setTimeout(() => {
+      if (generation === testGeneration.current) {
+        setCameraCheck({ status: "stalled", detail: `No answer from macOS after ${CAMERA_STALL_MS / 1000} s. If a permission dialog is open, choose Allow. ${CAMERA_SETTINGS_HINT}` });
+      }
+    }, CAMERA_STALL_MS);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      window.clearTimeout(stallTimer);
+      if (generation !== testGeneration.current) { stream.getTracks().forEach(track => track.stop()); return; }
+      previewStream.current = stream;
+      const track = stream.getVideoTracks()[0];
+      const settings = track?.getSettings();
+      const size = settings?.width && settings?.height ? `${settings.width}×${settings.height}` : null;
+      const detail = [track?.label || "Camera", size].filter((part): part is string => part !== null).join(" · ");
+      const video = previewRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+      }
+      if (generation !== testGeneration.current) return;
+      setCameraCheck({ status: "live", detail });
+    } catch (raised: unknown) {
+      window.clearTimeout(stallTimer);
+      if (generation !== testGeneration.current) return;
+      const name = raised instanceof DOMException ? raised.name : raised instanceof Error ? raised.name : "Error";
+      setCameraCheck({ status: "blocked", detail: `${name}: ${toMessage(raised) || "no details from the system"}`, hint: cameraHint(name) });
+    }
+  };
+
+  const badge = cameraBadge(cameraCheck, cameraSupported);
+  const cameraBusy = cameraCheck.status === "testing" || cameraCheck.status === "stalled";
 
   const parsedAge = ageInput.trim() === "" ? null : Number.parseInt(ageInput, 10);
   const isAgeValid = parsedAge === null || (!Number.isNaN(parsedAge) && parsedAge >= 18 && parsedAge <= 120);
@@ -69,7 +162,7 @@ export function SetupStep({ participant, onStart }: SetupStepProps) {
 
       <div className="panel">
         <h2>Device Readiness</h2>
-        <p className="hint">We check for microphone and camera support before starting.</p>
+        <p className="hint">We check for microphone and camera support before starting. Press Test camera to confirm macOS lets Elderwise use it.</p>
         <div className="provider-status-grid" style={{ marginTop: "var(--space-3)" }}>
           <div className="provider-status">
             <span>Microphone</span>
@@ -79,11 +172,34 @@ export function SetupStep({ participant, onStart }: SetupStepProps) {
           </div>
           <div className="provider-status">
             <span>Camera</span>
-            <span className={`badge ${cameraSupported ? "ok" : "warn"}`}>
-              {cameraSupported ? "Ready" : "Unavailable"}
-            </span>
+            <span className={`badge ${badge.tone}`} role="status">{badge.label}</span>
           </div>
         </div>
+        <div className="answer-row" style={{ marginTop: "var(--space-3)", alignItems: "flex-start" }}>
+          <button type="button" className="secondary" onClick={() => { void testCamera(); }} disabled={!cameraSupported || cameraBusy}>
+            Test camera
+          </button>
+          {cameraCheck.status === "live" && (
+            <button type="button" className="secondary" onClick={() => { stopCamera(); setCameraCheck({ status: "untested", detail: null }); }}>
+              Stop camera
+            </button>
+          )}
+          <video
+            ref={previewRef}
+            autoPlay
+            playsInline
+            muted
+            hidden={cameraCheck.status !== "live"}
+            aria-label="Mirrored camera preview"
+            style={{ width: 160, height: 120, objectFit: "cover", borderRadius: "var(--radius-sm)", transform: "scaleX(-1)", background: "var(--surface-muted)" }}
+          />
+        </div>
+        {cameraCheck.detail && (
+          <p className={cameraCheck.status === "live" ? "hint" : "error"} style={{ marginTop: "var(--space-2)" }} role={cameraCheck.status === "live" ? undefined : "alert"}>
+            {cameraCheck.status === "live" ? `Live · ${cameraCheck.detail}` : cameraCheck.detail}
+          </p>
+        )}
+        {cameraCheck.status === "blocked" && <p className="hint" style={{ marginTop: "var(--space-1)" }}>{cameraCheck.hint}</p>}
       </div>
 
       <div className="panel">

@@ -8,16 +8,26 @@ import {
 } from "./api";
 import { ProviderKeyField } from "./ProviderKeyField";
 import { summarizeAiStatus, type AiCapabilitySummary } from "./statusSummary";
-import type {
-  AiSettings,
-  AiStatus,
-  AsrProvider,
-  ChatProvider,
-  KeyProvider,
-  TestResult,
-  TestableProvider,
-  VoiceProvider,
+import {
+  defaultAiSettings,
+  type AiSettings,
+  type AiStatus,
+  type AsrProvider,
+  type ChatProvider,
+  type KeyProvider,
+  type TestResult,
+  type TestableProvider,
+  type VoiceProvider,
 } from "./types";
+
+type ModelSettingKey =
+  | "elevenlabsVoiceId"
+  | "elevenlabsAsrModel"
+  | "openaiAsrModel"
+  | "openaiChatModel"
+  | "elevenlabsTtsModel";
+
+const DEFAULTS = defaultAiSettings();
 
 const ASR_OPTIONS: { value: AsrProvider; label: string }[] = [
   { value: "elevenlabs", label: "ElevenLabs Scribe" },
@@ -39,6 +49,50 @@ function statusBadgeClass(row: AiCapabilitySummary): string {
   if (row.state === "active") return "badge ok";
   if (row.state === "needs_setup") return "badge warn";
   return "badge neutral";
+}
+
+function ModelField({
+  label,
+  settingKey,
+  settings,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  settingKey: ModelSettingKey;
+  settings: AiSettings;
+  onChange: (next: AiSettings) => void;
+  onCommit: (next: AiSettings) => void;
+}) {
+  const value = settings[settingKey];
+  const fallback = DEFAULTS[settingKey];
+  const isDefault = value.trim() === fallback;
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>{label}</span>
+      <div className="answer-row" style={{ marginTop: 0 }}>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange({ ...settings, [settingKey]: e.target.value })}
+          onBlur={() => onCommit(settings)}
+          style={{ minWidth: "min(18rem, 100%)" }}
+        />
+        {!isDefault && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onCommit({ ...settings, [settingKey]: fallback })}
+          >
+            Use default
+          </button>
+        )}
+      </div>
+      <span className="hint">
+        {isDefault ? `Default: ${fallback}` : `Default is ${fallback}`}
+      </span>
+    </label>
+  );
 }
 
 export function AiSettingsScreen() {
@@ -166,7 +220,7 @@ export function AiSettingsScreen() {
             <ProviderKeyField
               provider="openai"
               label="OpenAI"
-              hint="Required for GPT-5.5 summaries and optional transcription."
+              hint="Required for GPT-6.1 Sol summaries and optional transcription."
               source={status.keys.openai.source}
               onStatus={setStatus}
               {...keyTestProps("openai")}
@@ -203,31 +257,25 @@ export function AiSettingsScreen() {
 
         {settings.asrProvider === "elevenlabs" && (
           <div style={{ marginTop: "var(--space-3)" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>ElevenLabs ASR Model</span>
-              <input
-                type="text"
-                value={settings.elevenlabsAsrModel}
-                onChange={(e) => setSettings({ ...settings, elevenlabsAsrModel: e.target.value })}
-                onBlur={() => apply(settings)}
-                style={{ minWidth: "min(18rem, 100%)" }}
-              />
-            </label>
+            <ModelField
+              label="ElevenLabs ASR Model"
+              settingKey="elevenlabsAsrModel"
+              settings={settings}
+              onChange={setSettings}
+              onCommit={apply}
+            />
           </div>
         )}
 
         {settings.asrProvider === "openai" && (
           <div style={{ marginTop: "var(--space-3)" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>OpenAI ASR Model</span>
-              <input
-                type="text"
-                value={settings.openaiAsrModel}
-                onChange={(e) => setSettings({ ...settings, openaiAsrModel: e.target.value })}
-                onBlur={() => apply(settings)}
-                style={{ minWidth: "min(18rem, 100%)" }}
-              />
-            </label>
+            <ModelField
+              label="OpenAI ASR Model"
+              settingKey="openaiAsrModel"
+              settings={settings}
+              onChange={setSettings}
+              onCommit={apply}
+            />
           </div>
         )}
       </div>
@@ -251,16 +299,13 @@ export function AiSettingsScreen() {
 
         {settings.chatProvider === "openai" && (
           <div style={{ marginTop: "var(--space-3)" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>OpenAI Chat Model</span>
-              <input
-                type="text"
-                value={settings.openaiChatModel}
-                onChange={(e) => setSettings({ ...settings, openaiChatModel: e.target.value })}
-                onBlur={() => apply(settings)}
-                style={{ minWidth: "min(18rem, 100%)" }}
-              />
-            </label>
+            <ModelField
+              label="OpenAI Chat Model"
+              settingKey="openaiChatModel"
+              settings={settings}
+              onChange={setSettings}
+              onCommit={apply}
+            />
           </div>
         )}
       </div>
@@ -284,26 +329,20 @@ export function AiSettingsScreen() {
 
         {settings.voiceProvider === "elevenlabs" && (
           <div style={{ display: "grid", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>ElevenLabs Voice ID</span>
-              <input
-                type="text"
-                value={settings.elevenlabsVoiceId}
-                onChange={(e) => setSettings({ ...settings, elevenlabsVoiceId: e.target.value })}
-                onBlur={() => apply(settings)}
-                style={{ minWidth: "min(18rem, 100%)" }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-              <span style={{ fontSize: "var(--text-sm)", fontWeight: 600 }}>ElevenLabs TTS Model</span>
-              <input
-                type="text"
-                value={settings.elevenlabsTtsModel}
-                onChange={(e) => setSettings({ ...settings, elevenlabsTtsModel: e.target.value })}
-                onBlur={() => apply(settings)}
-                style={{ minWidth: "min(18rem, 100%)" }}
-              />
-            </label>
+            <ModelField
+              label="ElevenLabs Voice ID"
+              settingKey="elevenlabsVoiceId"
+              settings={settings}
+              onChange={setSettings}
+              onCommit={apply}
+            />
+            <ModelField
+              label="ElevenLabs TTS Model"
+              settingKey="elevenlabsTtsModel"
+              settings={settings}
+              onChange={setSettings}
+              onCommit={apply}
+            />
           </div>
         )}
       </div>

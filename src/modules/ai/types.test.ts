@@ -32,13 +32,13 @@ describe("ai schemas", () => {
         provider: "elevenlabs",
         configured: true,
         source: "keychain",
-        model: "scribe_v1",
+        model: "scribe_v2",
       },
       chat: {
         provider: "openai",
         configured: true,
         source: "env",
-        model: "gpt-5.5",
+        model: "gpt-6.1-sol",
       },
       voice: {
         provider: "system",
@@ -60,7 +60,7 @@ describe("ai schemas", () => {
     const testRes = {
       ok: true,
       detail: "Connected successfully",
-      models: ["gpt-4o", "gpt-5.5"],
+      models: ["gpt-4o", "gpt-6.1-sol"],
     };
     const parsed = testResultSchema.parse(testRes);
     expect(parsed.ok).toBe(true);

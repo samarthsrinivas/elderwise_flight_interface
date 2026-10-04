@@ -25,9 +25,9 @@ Only two kinds of data leave the device, and only when you configure a key:
 
 | Data | Destination | Purpose |
 | --- | --- | --- |
-| Short WAV clips from the voice tasks | ElevenLabs Scribe (default) or OpenAI `gpt-4o-mini-transcribe` | Transcription |
-| Instruction text | ElevenLabs TTS (default) or macOS system voice (no key needed) | Reading instructions aloud |
-| De-identified results JSON for one session | OpenAI (default `gpt-5.5`) | Plain-English summary paragraph |
+| Short WAV clips from the voice tasks | ElevenLabs Scribe `scribe_v2` (default) or OpenAI `gpt-4o-mini-transcribe` | Transcription |
+| Instruction text | ElevenLabs TTS `eleven_v4` (default) or macOS system voice (no key needed) | Reading instructions aloud |
+| De-identified results JSON for one session | OpenAI (default `gpt-6.1-sol`) | Plain-English summary paragraph |
 
 Everything else — voice acoustics, voice-age model, rPPG, gaze metrics,
 banding, history, PDF — runs inside the app. With no keys configured the

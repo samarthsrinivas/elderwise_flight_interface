@@ -32,10 +32,10 @@ export function defaultAiSettings(): AiSettings {
     chatProvider: "openai",
     voiceProvider: "elevenlabs",
     elevenlabsVoiceId: "JBFqnCBsd6RMkjVDRZzb",
-    elevenlabsTtsModel: "eleven_multilingual_v2",
-    elevenlabsAsrModel: "scribe_v1",
+    elevenlabsTtsModel: "eleven_v4",
+    elevenlabsAsrModel: "scribe_v2",
     openaiAsrModel: "gpt-4o-mini-transcribe",
-    openaiChatModel: "gpt-5.5",
+    openaiChatModel: "gpt-6.1-sol",
   };
 }
 
