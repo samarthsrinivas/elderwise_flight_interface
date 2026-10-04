@@ -8,6 +8,8 @@ const SERVICE: &str = "com.elderwise.app";
 pub enum KeyProvider {
     Openai,
     Elevenlabs,
+    Cloudflare,
+    Typesafe,
 }
 
 impl KeyProvider {
@@ -15,6 +17,9 @@ impl KeyProvider {
         match self {
             Self::Openai => "openai-api-key",
             Self::Elevenlabs => "elevenlabs-api-key",
+            Self::Cloudflare => "cloudflare-api-token",
+            // Shared with the questionnaire pipeline (PR #15) so one key serves both.
+            Self::Typesafe => "typesafe-api-key",
         }
     }
 }
@@ -53,5 +58,7 @@ mod tests {
     fn account_names_are_stable() {
         assert_eq!(KeyProvider::Openai.account(), "openai-api-key");
         assert_eq!(KeyProvider::Elevenlabs.account(), "elevenlabs-api-key");
+        assert_eq!(KeyProvider::Cloudflare.account(), "cloudflare-api-token");
+        assert_eq!(KeyProvider::Typesafe.account(), "typesafe-api-key");
     }
 }

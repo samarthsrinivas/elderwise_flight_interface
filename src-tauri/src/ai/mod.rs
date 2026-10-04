@@ -1,5 +1,6 @@
 pub mod asr;
 pub mod chat;
+pub mod decision;
 pub mod error;
 mod probe;
 mod providers;
@@ -85,14 +86,14 @@ pub async fn ai_clear_key(provider: String) -> Result<(), ErrorPayload> {
 #[tauri::command]
 pub async fn ai_status(app: tauri::AppHandle) -> Result<AiStatus, ErrorPayload> {
     let dir = config_dir(&app).map_err(ErrorPayload::from)?;
-    let openai = providers::key_source(store::KeyProvider::Openai).map_err(ErrorPayload::from)?;
-    let elevenlabs =
-        providers::key_source(store::KeyProvider::Elevenlabs).map_err(ErrorPayload::from)?;
-    Ok(status::build_status(
-        &settings::load(&dir),
-        openai,
-        elevenlabs,
-    ))
+    let source = |provider| providers::key_source(provider).map_err(ErrorPayload::from);
+    let keys = status::KeySources {
+        openai: source(store::KeyProvider::Openai)?,
+        elevenlabs: source(store::KeyProvider::Elevenlabs)?,
+        cloudflare: source(store::KeyProvider::Cloudflare)?,
+        typesafe: source(store::KeyProvider::Typesafe)?,
+    };
+    Ok(status::build_status(&settings::load(&dir), keys))
 }
 
 #[tauri::command]

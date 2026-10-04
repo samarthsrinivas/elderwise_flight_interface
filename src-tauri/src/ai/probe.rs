@@ -1,6 +1,10 @@
-use super::{error::AiError, providers, settings::AiSettings, store::KeyProvider, tts};
+use super::{decision, error::AiError, providers, settings::AiSettings, store::KeyProvider, tts};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+const PROBE_STATE: &str = "The sky is blue.";
+const PROBE_INSTRUCTIONS: &str = "The statement describes a colour.";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +92,44 @@ pub(super) async fn test_provider(
                 models: Vec::new(),
             },
         },
+        KeyProvider::Cloudflare | KeyProvider::Typesafe => {
+            match providers::decision_config_for_key(config, provider) {
+                Ok(decision_config) => {
+                    let questions =
+                        BTreeMap::from([("probe".to_string(), decision::noul(PROBE_INSTRUCTIONS))]);
+                    match decision::decide(http, &decision_config, json!(PROBE_STATE), questions)
+                        .await
+                    {
+                        Ok(response) => {
+                            let probability = response
+                                .answers
+                                .get("probe")
+                                .and_then(decision::Answer::as_noul);
+                            TestResult {
+                                ok: true,
+                                detail: match probability {
+                                    Some(p) => {
+                                        format!("Decision model answered the probe (p={p:.2})")
+                                    }
+                                    None => "Decision model answered the probe".to_string(),
+                                },
+                                models: response.model.into_iter().collect(),
+                            }
+                        }
+                        Err(err) => TestResult {
+                            ok: false,
+                            detail: err.to_string(),
+                            models: Vec::new(),
+                        },
+                    }
+                }
+                Err(err) => TestResult {
+                    ok: false,
+                    detail: err.to_string(),
+                    models: Vec::new(),
+                },
+            }
+        }
     };
     Ok(outcome)
 }

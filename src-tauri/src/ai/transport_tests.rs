@@ -3,7 +3,7 @@ use std::net::TcpListener;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use super::{asr, chat, error::AiError, tts, AiState};
+use super::{asr, chat, decision, error::AiError, tts, AiState};
 
 fn serve(status: u16, body: &str) -> (String, JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -221,4 +221,83 @@ fn elevenlabs_tts_returns_audio_bytes_over_http() {
     assert!(request
         .starts_with("POST /v1/text-to-speech/voice-1?output_format=mp3_44100_128 HTTP/1.1\r\n"));
     assert!(request.contains("xi-api-key: test-key\r\n"));
+}
+
+#[test]
+fn decision_request_is_posted_with_bearer_and_exact_body() {
+    let (base, server) = serve(
+        200,
+        r#"{"model":"jev-1.13.0","answers":{"q":0.8},"usage":{}}"#,
+    );
+    let config = decision::DecisionConfig {
+        url: format!("{base}/v1/systemone"),
+        api_key: "test-key".to_string(),
+        model: Some("jev-1.13.0".to_string()),
+    };
+    let questions = std::collections::BTreeMap::from([(
+        "q".to_string(),
+        decision::noul("The statement describes a colour."),
+    )]);
+    let response = tauri::async_runtime::block_on(async {
+        let state = AiState::new();
+        decision::decide(
+            state.http().await.unwrap(),
+            &config,
+            serde_json::json!("The sky is blue."),
+            questions,
+        )
+        .await
+    })
+    .unwrap();
+    let request = server.join().unwrap();
+    assert!(request.starts_with("POST /v1/systemone HTTP/1.1\r\n"));
+    assert!(request.contains("authorization: Bearer test-key\r\n"));
+    let (_, body) = request.split_once("\r\n\r\n").unwrap();
+    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "model": "jev-1.13.0",
+            "state": "The sky is blue.",
+            "questions": {"q": {"type": "noul", "instructions": "The statement describes a colour."}}
+        })
+    );
+    assert_eq!(response.model.as_deref(), Some("jev-1.13.0"));
+    assert_eq!(
+        response
+            .answers
+            .get("q")
+            .and_then(decision::Answer::as_noul),
+        Some(0.8)
+    );
+}
+
+#[test]
+fn decision_errors_map_to_payload_codes() {
+    for (status, code) in [
+        (401, "unauthorized"),
+        (403, "unauthorized"),
+        (429, "rate_limited"),
+        (500, "protocol"),
+    ] {
+        let (base, server) = serve(status, "failure");
+        let config = decision::DecisionConfig {
+            url: format!("{base}/v1/systemone"),
+            api_key: "test-key".to_string(),
+            model: None,
+        };
+        let error = tauri::async_runtime::block_on(async {
+            let state = AiState::new();
+            decision::decide(
+                state.http().await.unwrap(),
+                &config,
+                serde_json::json!("x"),
+                std::collections::BTreeMap::new(),
+            )
+            .await
+        })
+        .unwrap_err();
+        server.join().unwrap();
+        assert_eq!(super::error::ErrorPayload::from(error).code, code);
+    }
 }

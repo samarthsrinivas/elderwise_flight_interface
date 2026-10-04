@@ -25,17 +25,32 @@ pub enum VoiceProvider {
     System,
 }
 
+/// Non-generative decision model used for summary verification and transcript
+/// review. Clef and Clef-flash run on Cloudflare Workers AI; Jev on TypeSafe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DecisionProvider {
+    #[serde(rename = "clef-flash")]
+    ClefFlash,
+    Clef,
+    Jev,
+    Off,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AiSettings {
     pub asr_provider: AsrProvider,
     pub chat_provider: ChatProvider,
     pub voice_provider: VoiceProvider,
+    pub decision_provider: DecisionProvider,
     pub elevenlabs_voice_id: String,
     pub elevenlabs_tts_model: String,
     pub elevenlabs_asr_model: String,
     pub openai_asr_model: String,
     pub openai_chat_model: String,
+    pub cloudflare_account_id: String,
+    pub jev_model: String,
 }
 
 impl Default for AiSettings {
@@ -44,11 +59,14 @@ impl Default for AiSettings {
             asr_provider: AsrProvider::Elevenlabs,
             chat_provider: ChatProvider::Openai,
             voice_provider: VoiceProvider::Elevenlabs,
+            decision_provider: DecisionProvider::Off,
             elevenlabs_voice_id: "JBFqnCBsd6RMkjVDRZzb".to_string(),
             elevenlabs_tts_model: "eleven_v4".to_string(),
             elevenlabs_asr_model: "scribe_v2".to_string(),
             openai_asr_model: "gpt-4o-mini-transcribe".to_string(),
             openai_chat_model: "gpt-6.1-sol".to_string(),
+            cloudflare_account_id: String::new(),
+            jev_model: "jev-1.13.0".to_string(),
         }
     }
 }
@@ -113,11 +131,14 @@ mod tests {
             asr_provider: AsrProvider::Openai,
             chat_provider: ChatProvider::Off,
             voice_provider: VoiceProvider::System,
+            decision_provider: DecisionProvider::Jev,
             elevenlabs_voice_id: "custom-voice".to_string(),
             elevenlabs_tts_model: "custom-tts".to_string(),
             elevenlabs_asr_model: "custom-asr".to_string(),
             openai_asr_model: "custom-transcribe".to_string(),
             openai_chat_model: "gpt-4o-mini".to_string(),
+            cloudflare_account_id: "acct-123".to_string(),
+            jev_model: "jev-custom".to_string(),
         };
         save(&dir, &settings).unwrap();
         let loaded = load(&dir);
@@ -135,13 +156,31 @@ mod tests {
                 "asrProvider": "elevenlabs",
                 "chatProvider": "openai",
                 "voiceProvider": "elevenlabs",
+                "decisionProvider": "off",
                 "elevenlabsVoiceId": "JBFqnCBsd6RMkjVDRZzb",
                 "elevenlabsTtsModel": "eleven_v4",
                 "elevenlabsAsrModel": "scribe_v2",
                 "openaiAsrModel": "gpt-4o-mini-transcribe",
-                "openaiChatModel": "gpt-6.1-sol"
+                "openaiChatModel": "gpt-6.1-sol",
+                "cloudflareAccountId": "",
+                "jevModel": "jev-1.13.0"
             })
         );
+    }
+
+    #[test]
+    fn decision_provider_wire_names_round_trip() {
+        for (provider, wire) in [
+            (DecisionProvider::ClefFlash, "clef-flash"),
+            (DecisionProvider::Clef, "clef"),
+            (DecisionProvider::Jev, "jev"),
+            (DecisionProvider::Off, "off"),
+        ] {
+            let value = serde_json::to_value(provider).unwrap();
+            assert_eq!(value, serde_json::json!(wire));
+            let parsed: DecisionProvider = serde_json::from_value(value).unwrap();
+            assert_eq!(parsed, provider);
+        }
     }
 
     #[test]
@@ -208,7 +247,12 @@ mod tests {
 
     #[test]
     fn unknown_provider_yields_defaults() {
-        for field in ["asrProvider", "chatProvider", "voiceProvider"] {
+        for field in [
+            "asrProvider",
+            "chatProvider",
+            "voiceProvider",
+            "decisionProvider",
+        ] {
             let dir = temp_dir();
             fs::create_dir_all(&dir).unwrap();
             let raw = serde_json::json!({field: "unknown", "openaiChatModel": "custom"});
