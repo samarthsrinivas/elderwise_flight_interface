@@ -208,17 +208,17 @@ export function VitalsPanel({ controller, onComplete }: VitalsPanelProps) {
           )}
 
           <div className="vitals-actions">
-            <button
-              type="button"
-              className="vitals-start"
-              onClick={() => void controller.start()}
-              disabled={busy}
-            >
-              {phase === "done" || phase === "error" ? "Try again" : "Start camera check"}
-            </button>
-            {busy && (
+            {busy ? (
               <button type="button" onClick={controller.cancel}>
                 Cancel
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="vitals-start"
+                onClick={() => void controller.start()}
+              >
+                {phase === "done" || phase === "error" ? "Try again" : "Start camera check"}
               </button>
             )}
           </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toMessage } from "../../../lib/errors";
+import { AgeGauge } from "../../../ui/AgeGauge";
 import { VoiceLiveVisualizer } from "../../voice/VoiceLiveVisualizer";
 import {
   captureVoiceTask,
@@ -11,6 +12,7 @@ import type { VoiceTaskResult } from "../types";
 
 export interface VoiceStepProps {
   readonly voiceTasks: readonly VoiceTaskResult[];
+  readonly statedAge?: number | null;
   readonly onCompleteTask: (result: VoiceTaskResult) => void;
   readonly onFinish: () => void;
   readonly onSkip: () => void;
@@ -21,6 +23,7 @@ type TaskPhase = "idle" | "speaking" | "recording" | "analyzing" | "done" | "err
 
 export function VoiceStep({
   voiceTasks,
+  statedAge = null,
   onCompleteTask,
   onFinish,
   onSkip,
@@ -214,12 +217,15 @@ export function VoiceStep({
                   Pitch (F0): {Math.round(currentResult.markers.f0MeanHz)} Hz
                 </span>
               )}
-              {currentResult.ageEstimate && (
-                <span className="badge neutral">
-                  Voice age: ~{Math.round(currentResult.ageEstimate.ageYears)} yrs
-                </span>
-              )}
             </div>
+            {currentResult.ageEstimate && (
+              <AgeGauge
+                size="sm"
+                voiceAge={currentResult.ageEstimate.ageYears}
+                maeYears={currentResult.ageEstimate.maeYears}
+                statedAge={statedAge}
+              />
+            )}
             {currentResult.transcript && (
               <p className="hint voice-transcript-preview">
                 <strong>Transcript:</strong> &ldquo;{currentResult.transcript}&rdquo;

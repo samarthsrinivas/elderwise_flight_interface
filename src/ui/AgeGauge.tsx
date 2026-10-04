@@ -12,8 +12,9 @@ const MAX_AGE = 100;
 const AGE_SPAN = 60;
 
 const CX = 120;
-const CY = 105;
+const CY = 115;
 const RADIUS = 85;
+const VIEWBOX_HEIGHT = 130;
 
 function clamp(val: number, min: number, max: number): number {
   return Math.min(Math.max(val, min), max);
@@ -61,12 +62,15 @@ export function AgeGauge({ voiceAge, maeYears, statedAge, size = "md" }: AgeGaug
     const sInner = polarToCartesian(CX, CY, RADIUS - strokeWidth / 2 - 4, statedAng);
     const sOuter = polarToCartesian(CX, CY, RADIUS + strokeWidth / 2 + 5, statedAng);
     const sCenter = polarToCartesian(CX, CY, RADIUS, statedAng);
-    const sLabelPos = polarToCartesian(CX, CY, RADIUS + strokeWidth / 2 + 14, statedAng);
+    const sLabelPos = polarToCartesian(CX, CY, RADIUS - strokeWidth / 2 - 16, statedAng);
+    const labelAnchor: "start" | "middle" | "end" =
+      statedAng > (Math.PI * 3) / 4 ? "start" : statedAng < Math.PI / 4 ? "end" : "middle";
     statedInfo = {
       inner: sInner,
       outer: sOuter,
       center: sCenter,
       labelPos: sLabelPos,
+      labelAnchor,
       clampedAge: Math.round(statedAge),
     };
   }
@@ -103,7 +107,7 @@ export function AgeGauge({ voiceAge, maeYears, statedAge, size = "md" }: AgeGaug
     >
       <svg
         className="age-gauge__svg"
-        viewBox="0 0 240 120"
+        viewBox={`0 0 240 ${VIEWBOX_HEIGHT}`}
       >
         <title>{ariaLabel}</title>
 
@@ -178,7 +182,7 @@ export function AgeGauge({ voiceAge, maeYears, statedAge, size = "md" }: AgeGaug
             <text
               x={statedInfo.labelPos.x.toFixed(2)}
               y={statedInfo.labelPos.y.toFixed(2)}
-              textAnchor="middle"
+              textAnchor={statedInfo.labelAnchor}
               className="age-gauge__stated-label"
             >
               {`You: ${statedInfo.clampedAge}`}

@@ -60,6 +60,7 @@ export function AssessmentScreen() {
         return (
           <VoiceStep
             voiceTasks={state.voiceTasks}
+            statedAge={state.participant.age}
             onCompleteTask={completeVoiceTask}
             onFinish={finishVoice}
             onSkip={skipVoice}
