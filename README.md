@@ -62,6 +62,26 @@ cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings &
 Grant microphone and camera access when macOS prompts. The usage strings live
 in `src-tauri/Info.plist`.
 
+### Local `.app` / DMG build
+
+`tauri.conf.json` pins the release signing identity used by CI
+(`Developer ID Application: AJENTIK AI PTE. LTD.`). On a machine without that
+certificate, override it with ad-hoc signing:
+
+```sh
+PATH="/usr/bin:$PATH" APPLE_SIGNING_IDENTITY=- bun run tauri build
+open src-tauri/target/release/bundle/macos/elderwise.app
+```
+
+The `PATH` prefix matters if an asdf/pyenv Python `xattr` shim shadows Apple's
+`/usr/bin/xattr`; the bundler calls `xattr -cr` and fails with
+`failed to run xattr` otherwise.
+
+Ad-hoc signed builds change identity on every rebuild, so macOS may re-prompt
+for Keychain access to saved API keys. For development, exporting
+`OPENAI_API_KEY` / `ELEVENLABS_API_KEY` in the shell that runs
+`bun run tauri dev` avoids the Keychain entirely.
+
 ## Architecture
 
 ```
