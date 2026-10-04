@@ -187,3 +187,7 @@ Apple secrets are present (see `docs/signing-setup.md`), and copies them into
   interview speech (MAE 7.6 y, r 0.76). It regresses toward ~40, so speakers
   60+ are typically underestimated by ~10 years; it is not biological age.
 - One local user; no accounts or sync.
+
+### Local Clef assessment review
+
+The guided check-in can run an experimental human-review decision locally through a Tauri-managed Clef-Flash Q4 llama.cpp sidecar. Model acquisition needs a first-run Hugging Face download; subsequent inference uses the local cache. History, PDF and fallback summaries remain available if the engine fails. See [setup, provisioning, policy and verification](docs/clef-assessment.md).
