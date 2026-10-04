@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Elderwise uses your microphone to record short speech tasks for local voice biomarker analysis.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Elderwise uses your camera to estimate heart rate, breathing rate and eye movement locally on this device.</string>
+</dict>
+</plist>
